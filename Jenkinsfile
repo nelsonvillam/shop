@@ -35,6 +35,7 @@ pipeline {
                 docker {
                     image 'eclipse-temurin:21-jdk'
                     reuseNode true
+                    args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
                 }
             }
             steps {

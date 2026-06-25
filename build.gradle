@@ -55,7 +55,10 @@ tasks.register('integrationTest', Test) {
     include '**/*IT.class'
     jvmArgs '-Dnet.bytebuddy.experimental=true'
     environment 'TESTCONTAINERS_RYUK_DISABLED', 'true'
-    environment 'TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE', '/tmp/docker-tc-proxy.sock'
+    def proxySocket = '/tmp/docker-tc-proxy.sock'
+    if (new File(proxySocket).exists()) {
+        environment 'TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE', proxySocket
+    }
     testLogging {
         events 'passed', 'failed', 'skipped'
         showStandardStreams false

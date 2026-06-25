@@ -76,6 +76,8 @@ pipeline {
                     string(credentialsId: 'mongo-password', variable: 'MONGO_PASSWORD')
                 ]) {
                     sh """
+                        docker stop shop || true
+                        docker rm shop || true
                         docker compose down --remove-orphans || true
                         docker compose up -d
                     """

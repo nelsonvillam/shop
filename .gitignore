@@ -2,4 +2,3 @@ build/
 .gradle/
 target/
 .claude/
-gradle/

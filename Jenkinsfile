@@ -73,23 +73,11 @@ pipeline {
             steps {
                 withCredentials([
                     string(credentialsId: 'mongo-user',     variable: 'MONGO_USER'),
-                    string(credentialsId: 'mongo-password', variable: 'MONGO_PASSWORD'),
-                    string(credentialsId: 'redis-host',     variable: 'REDIS_HOST'),
-                    string(credentialsId: 'redis-port',     variable: 'REDIS_PORT')
+                    string(credentialsId: 'mongo-password', variable: 'MONGO_PASSWORD')
                 ]) {
                     sh """
-                        docker stop shop || true
-                        docker rm shop || true
-                        docker run -d \\
-                            --name shop \\
-                            --restart unless-stopped \\
-                            -p 8080:8080 \\
-                            -e SPRING_PROFILES_ACTIVE=prod \\
-                            -e MONGO_USER=\${MONGO_USER} \\
-                            -e MONGO_PASSWORD=\${MONGO_PASSWORD} \\
-                            -e REDIS_HOST=\${REDIS_HOST} \\
-                            -e REDIS_PORT=\${REDIS_PORT} \\
-                            \${IMAGE_NAME}:\${IMAGE_TAG}
+                        docker compose down --remove-orphans || true
+                        docker compose up -d
                     """
                 }
             }

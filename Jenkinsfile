@@ -13,9 +13,15 @@ pipeline {
             }
         }
 
-        stage('Build & Unit Test') {
+        stage('Unit Test') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                }
+            }
             steps {
-                sh './gradlew clean build -x integrationTest'
+                sh './gradlew test --no-daemon'
             }
             post {
                 always {
@@ -25,8 +31,14 @@ pipeline {
         }
 
         stage('Integration Test') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                }
+            }
             steps {
-                sh './gradlew integrationTest'
+                sh './gradlew integrationTest --no-daemon'
             }
             post {
                 always {

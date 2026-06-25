@@ -72,10 +72,10 @@ pipeline {
         stage('Deploy') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'mongo-user',     secretVariable: 'MONGO_USER'),
-                    string(credentialsId: 'mongo-password', secretVariable: 'MONGO_PASSWORD'),
-                    string(credentialsId: 'redis-host',     secretVariable: 'REDIS_HOST'),
-                    string(credentialsId: 'redis-port',     secretVariable: 'REDIS_PORT')
+                    string(credentialsId: 'mongo-user',     variable: 'MONGO_USER'),
+                    string(credentialsId: 'mongo-password', variable: 'MONGO_PASSWORD'),
+                    string(credentialsId: 'redis-host',     variable: 'REDIS_HOST'),
+                    string(credentialsId: 'redis-port',     variable: 'REDIS_PORT')
                 ]) {
                     sh """
                         docker stop shop || true

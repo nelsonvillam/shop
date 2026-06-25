@@ -85,10 +85,10 @@ pipeline {
                             --restart unless-stopped \\
                             -p 8080:8080 \\
                             -e SPRING_PROFILES_ACTIVE=prod \\
-                            -e MONGO_USER=${MONGO_USER} \\
-                            -e MONGO_PASSWORD=${MONGO_PASSWORD} \\
-                            -e REDIS_HOST=${REDIS_HOST} \\
-                            -e REDIS_PORT=${REDIS_PORT} \\
+                            -e MONGO_USER=\${MONGO_USER} \\
+                            -e MONGO_PASSWORD=\${MONGO_PASSWORD} \\
+                            -e REDIS_HOST=\${REDIS_HOST} \\
+                            -e REDIS_PORT=\${REDIS_PORT} \\
                             ${IMAGE_NAME}:${IMAGE_TAG}
                     """
                 }

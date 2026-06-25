@@ -107,7 +107,10 @@
       "Bash(ps *)",
       "Bash(brew services *)",
       "Bash(mongosh *)",
-      "Bash(./gradlew *)"
+      "Bash(./gradlew *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

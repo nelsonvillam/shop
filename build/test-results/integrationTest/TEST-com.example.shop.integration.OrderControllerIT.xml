@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.shop.integration.OrderControllerIT" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-06-25T01:47:14.352Z" hostname="192.168.1.10" time="0.556">
+  <properties/>
+  <testcase name="findDetail_returnsNestedCustomerAndProducts()" classname="com.example.shop.integration.OrderControllerIT" time="0.159"/>
+  <testcase name="findAll_returnsAllOrders()" classname="com.example.shop.integration.OrderControllerIT" time="0.035"/>
+  <testcase name="findById_whenExists_returnsOrder()" classname="com.example.shop.integration.OrderControllerIT" time="0.031"/>
+  <testcase name="findByCustomer_returnsOnlyThatCustomersOrders()" classname="com.example.shop.integration.OrderControllerIT" time="0.037"/>
+  <testcase name="placeOrder_withSimulatedFail_rollsBackStockAndDoesNotCreateOrder()" classname="com.example.shop.integration.OrderControllerIT" time="0.075"/>
+  <testcase name="deleteOrder_returns204AndRemovesIt()" classname="com.example.shop.integration.OrderControllerIT" time="0.04"/>
+  <testcase name="placeOrder_success_decrementsStockAndCreatesOrder()" classname="com.example.shop.integration.OrderControllerIT" time="0.03"/>
+  <testcase name="findByProduct_returnsOrdersContainingProduct()" classname="com.example.shop.integration.OrderControllerIT" time="0.034"/>
+  <testcase name="updateStatus_changesOrderStatus()" classname="com.example.shop.integration.OrderControllerIT" time="0.031"/>
+  <testcase name="createOrder_returns201WithComputedTotal()" classname="com.example.shop.integration.OrderControllerIT" time="0.025"/>
+  <testcase name="placeOrder_withZeroStock_returns500AndDoesNotCreateOrder()" classname="com.example.shop.integration.OrderControllerIT" time="0.029"/>
+  <testcase name="createOrder_withInvalidCustomer_returns500()" classname="com.example.shop.integration.OrderControllerIT" time="0.025"/>
+  <system-out><![CDATA[2026-06-24T21:47:14.348-04:00  INFO 34333 --- [    Test worker] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.example.shop.integration.OrderControllerIT]: OrderControllerIT does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-06-24T21:47:14.351-04:00  INFO 34333 --- [    Test worker] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.example.shop.ShopApplication for test class com.example.shop.integration.OrderControllerIT
+2026-06-24T21:47:14.353-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.357-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.360-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.364-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.376-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.379-04:00 TRACE 34333 --- [o-auto-1-exec-8] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.484-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.486-04:00 TRACE 34333 --- [o-auto-1-exec-9] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.493-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b31"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.494-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b32"}, { "$oid" : "6a3c88a23bce0335124b2b33"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b32", "6a3c88a23bce0335124b2b33"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.496-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.505-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Executing aggregation: [{ "$match" : { "_id" : { "$oid" : "6a3c88a23bce0335124b2b34"}}}, { "$lookup" : { "from" : "customers", "localField" : "customerId", "foreignField" : "_id", "as" : "customer"}}, { "$unwind" : "$customer"}, { "$lookup" : { "from" : "products", "localField" : "productIds", "foreignField" : "_id", "as" : "products"}}] in collection orders
+2026-06-24T21:47:14.513-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.516-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.519-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.522-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.526-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.527-04:00 TRACE 34333 --- [o-auto-1-exec-3] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.529-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.531-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.534-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b35"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.535-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b36"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b36"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.536-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.539-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b35"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.540-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b37"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b37"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.541-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.545-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : find using query: {} fields: Document{{}} sort: null for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.548-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.551-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.552-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.556-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.560-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.563-04:00 TRACE 34333 --- [o-auto-1-exec-9] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.565-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.568-04:00 TRACE 34333 --- [-auto-1-exec-10] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.570-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b3a"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.571-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b3b"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b3b"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.572-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.575-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b3d"} fields: Document{{}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.579-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.582-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.584-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.587-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.591-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.594-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.596-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.599-04:00 TRACE 34333 --- [o-auto-1-exec-5] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.601-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b3e"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.602-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b3f"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b3f"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.603-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.605-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b3e"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.606-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b40"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b40"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.607-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.612-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : find using query: { "customerId" : { "$oid" : "6a3c88a23bce0335124b2b3e"}} fields: Document{{}} sort: { "customerId" : { "$oid" : "6a3c88a23bce0335124b2b3e"}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.617-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.620-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.622-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.626-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.630-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.633-04:00 TRACE 34333 --- [-auto-1-exec-10] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.636-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.639-04:00 TRACE 34333 --- [o-auto-1-exec-1] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.641-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b44"} fields: Document{{}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.642-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Executing count: {} in collection: orders
+2026-06-24T21:47:14.649-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b43"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.658-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b44"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b44"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.661-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : Saving Document containing fields: [_id, name, description, price, stock, _class]
+2026-06-24T21:47:14.676-04:00 ERROR 34333 --- [o-auto-1-exec-2] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.RuntimeException: Simulated failure — transaction should roll back stock changes] with root cause
+
+java.lang.RuntimeException: Simulated failure — transaction should roll back stock changes
+	at com.example.shop.service.OrderService.placeOrder(OrderService.java:105) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:354) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:196) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:163) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:392) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:720) ~[spring-aop-6.1.8.jar:6.1.8]
+	at com.example.shop.service.OrderService$$SpringCGLIB$$0.placeOrder(<generated>) ~[main/:na]
+	at com.example.shop.controller.OrderController.place(OrderController.java:80) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:255) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:188) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:926) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:831) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1089) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:979) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1014) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:195) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:167) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:344) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:389) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:896) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1190) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-06-24T21:47:14.688-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b44"} fields: Document{{}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.689-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Executing count: {} in collection: orders
+2026-06-24T21:47:14.693-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.694-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.697-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.702-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.708-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.711-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.714-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.717-04:00 TRACE 34333 --- [o-auto-1-exec-5] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.721-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b46"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.722-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b47"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b47"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.724-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.728-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : Remove using query: { "_id" : { "$oid" : "6a3c88a23bce0335124b2b49"}} in collection: orders.
+2026-06-24T21:47:14.731-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b49"} fields: Document{{}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.733-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.735-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.737-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.740-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.743-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.746-04:00 TRACE 34333 --- [o-auto-1-exec-9] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.748-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.749-04:00 TRACE 34333 --- [-auto-1-exec-10] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.751-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4b"} fields: Document{{}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.754-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4a"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.755-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b4b"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b4b"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.755-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Saving Document containing fields: [_id, name, description, price, stock, _class]
+2026-06-24T21:47:14.756-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.760-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4d"} fields: Document{{}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.761-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4b"} fields: Document{{}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.763-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.766-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.767-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.771-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.773-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.776-04:00 TRACE 34333 --- [o-auto-1-exec-3] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.778-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.780-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.782-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4e"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.784-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b4f"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b4f"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.785-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.788-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b4e"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.789-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b50"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b50"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.790-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.794-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : find using query: { "productIds" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b4f"}]}} fields: Document{{}} sort: { "productIds" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b4f"}]}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.797-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.799-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.801-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.805-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.809-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.811-04:00 TRACE 34333 --- [o-auto-1-exec-9] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.813-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.814-04:00 TRACE 34333 --- [-auto-1-exec-10] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.816-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b53"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.818-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b54"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b54"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.819-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.822-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b56"} fields: Document{{}} for class: class com.example.shop.model.Order in collection: orders
+2026-06-24T21:47:14.823-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : Saving Document containing fields: [_id, customerId, productIds, status, createdAt, total, _class]
+2026-06-24T21:47:14.828-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.831-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.832-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.835-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.839-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.842-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.843-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.845-04:00 TRACE 34333 --- [o-auto-1-exec-5] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.847-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b57"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.848-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b58"}, { "$oid" : "6a3c88a23bce0335124b2b59"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b58", "6a3c88a23bce0335124b2b59"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.849-04:00 DEBUG 34333 --- [o-auto-1-exec-6] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [customerId, productIds, status, createdAt, total, _class] in collection: orders
+2026-06-24T21:47:14.854-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.855-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.857-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.860-04:00 DEBUG 34333 --- [o-auto-1-exec-7] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.864-04:00 DEBUG 34333 --- [o-auto-1-exec-8] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.866-04:00 TRACE 34333 --- [o-auto-1-exec-8] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.868-04:00 DEBUG 34333 --- [o-auto-1-exec-9] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.869-04:00 TRACE 34333 --- [o-auto-1-exec-9] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.871-04:00 DEBUG 34333 --- [-auto-1-exec-10] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.874-04:00 TRACE 34333 --- [-auto-1-exec-10] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.875-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Executing count: {} in collection: orders
+2026-06-24T21:47:14.876-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "6a3c88a23bce0335124b2b5b"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.877-04:00 DEBUG 34333 --- [o-auto-1-exec-1] o.s.data.mongodb.core.MongoTemplate      : find using query: { "_id" : { "$in" : [{ "$oid" : "6a3c88a23bce0335124b2b5e"}]}} fields: Document{{}} sort: { "_id" : { "$in" : ["6a3c88a23bce0335124b2b5e"]}} for class: class com.example.shop.model.Product in collection: products
+2026-06-24T21:47:14.878-04:00 ERROR 34333 --- [o-auto-1-exec-1] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.RuntimeException: Insufficient stock for product: SoldOut] with root cause
+
+java.lang.RuntimeException: Insufficient stock for product: SoldOut
+	at com.example.shop.service.OrderService.placeOrder(OrderService.java:97) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:354) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:196) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:163) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:392) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119) ~[spring-tx-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:720) ~[spring-aop-6.1.8.jar:6.1.8]
+	at com.example.shop.service.OrderService$$SpringCGLIB$$0.placeOrder(<generated>) ~[main/:na]
+	at com.example.shop.controller.OrderController.place(OrderController.java:80) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:255) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:188) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:926) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:831) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1089) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:979) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1014) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:195) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:167) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:344) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:389) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:896) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1190) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-06-24T21:47:14.880-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Executing count: {} in collection: orders
+2026-06-24T21:47:14.884-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: orders.
+2026-06-24T21:47:14.885-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: customers.
+2026-06-24T21:47:14.886-04:00 DEBUG 34333 --- [    Test worker] o.s.data.mongodb.core.MongoTemplate      : Remove using query: {} in collection: products.
+2026-06-24T21:47:14.890-04:00 DEBUG 34333 --- [o-auto-1-exec-2] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, email, address, _class] in collection: customers
+2026-06-24T21:47:14.895-04:00 DEBUG 34333 --- [o-auto-1-exec-3] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.898-04:00 TRACE 34333 --- [o-auto-1-exec-3] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.900-04:00 DEBUG 34333 --- [o-auto-1-exec-4] o.s.data.mongodb.core.MongoTemplate      : Inserting Document containing fields: [name, description, price, stock, _class] in collection: products
+2026-06-24T21:47:14.903-04:00 TRACE 34333 --- [o-auto-1-exec-4] o.s.cache.interceptor.CacheInterceptor   : Invalidating entire cache for operation Builder[public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)] caches=[products] | key='' | keyGenerator='' | cacheManager='' | cacheResolver='' | condition='',true,false on method public com.example.shop.dto.ProductResponseDTO com.example.shop.service.ProductService.create(com.example.shop.dto.ProductRequestDTO)
+2026-06-24T21:47:14.905-04:00 DEBUG 34333 --- [o-auto-1-exec-5] o.s.data.mongodb.core.MongoTemplate      : findOne using query: { "id" : "000000000000000000000000"} fields: Document{{}} for class: class com.example.shop.model.Customer in collection: customers
+2026-06-24T21:47:14.906-04:00 ERROR 34333 --- [o-auto-1-exec-5] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.RuntimeException: Customer not found: 000000000000000000000000] with root cause
+
+java.lang.RuntimeException: Customer not found: 000000000000000000000000
+	at com.example.shop.service.OrderService.lambda$create$1(OrderService.java:61) ~[main/:na]
+	at java.base/java.util.Optional.orElseThrow(Optional.java:403) ~[na:na]
+	at com.example.shop.service.OrderService.create(OrderService.java:61) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:354) ~[spring-aop-6.1.8.jar:6.1.8]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:716) ~[spring-aop-6.1.8.jar:6.1.8]
+	at com.example.shop.service.OrderService$$SpringCGLIB$$0.create(<generated>) ~[main/:na]
+	at com.example.shop.controller.OrderController.create(OrderController.java:65) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:255) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:188) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:926) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:831) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1089) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:979) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1014) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.1.8.jar:6.1.8]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.24.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:195) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51) ~[tomcat-embed-websocket-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.1.8.jar:6.1.8]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:164) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:140) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:167) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:344) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:389) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:896) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1741) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1190) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63) ~[tomcat-embed-core-10.1.24.jar:10.1.24]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

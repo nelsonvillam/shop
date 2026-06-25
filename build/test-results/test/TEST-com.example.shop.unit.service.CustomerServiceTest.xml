@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.shop.unit.service.CustomerServiceTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-24T01:43:05.893Z" hostname="192.168.1.10" time="0.421">
+  <properties/>
+  <testcase name="findByAddress_returnsMappedList()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.406"/>
+  <testcase name="update_whenNotFound_throwsException()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.002"/>
+  <testcase name="findByName_returnsMappedList()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.002"/>
+  <testcase name="delete_callsDeleteById()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.002"/>
+  <testcase name="findById_whenNotFound_throwsException()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.001"/>
+  <testcase name="update_whenFound_updatesAndReturns()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.002"/>
+  <testcase name="findAll_returnsMappedList()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.001"/>
+  <testcase name="create_savesAndReturnsMappedDTO()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.001"/>
+  <testcase name="findById_whenFound_returnsMappedDTO()" classname="com.example.shop.unit.service.CustomerServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[WARNING: A Java agent has been loaded dynamically (/Users/nelson.villamizar/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.16/4a451ee6484abac3a498df0f3b33ed00a6fced4d/byte-buddy-agent-1.14.16.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+]]></system-err>
+</testsuite>

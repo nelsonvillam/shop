@@ -1,0 +1,8 @@
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/integration/AbstractIntegrationTest.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/integration/CustomerControllerIT.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/integration/DockerApiVersionProxyStrategy.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/integration/OrderControllerIT.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/integration/ProductControllerIT.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/unit/service/CustomerServiceTest.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/unit/service/OrderServiceTest.java
+/Users/nelson.villamizar/Downloads/mongodb-course/shop/src/test/java/com/example/shop/unit/service/ProductServiceTest.java

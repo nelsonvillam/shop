@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.shop.unit.service.OrderServiceTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-24T01:43:06.318Z" hostname="192.168.1.10" time="0.218">
+  <properties/>
+  <testcase name="create_whenValid_computesTotalAndSaves()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.181"/>
+  <testcase name="updateStatus_changesStatusAndSaves()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.002"/>
+  <testcase name="delete_callsDeleteById()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.002"/>
+  <testcase name="findById_whenNotFound_throwsException()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.001"/>
+  <testcase name="create_whenProductMissing_throwsException()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.001"/>
+  <testcase name="create_whenCustomerNotFound_throwsException()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.001"/>
+  <testcase name="findAll_returnsMappedList()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.002"/>
+  <testcase name="findDetailById_returnsMappedDTO()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.024"/>
+  <testcase name="findById_whenFound_returnsMappedDTO()" classname="com.example.shop.unit.service.OrderServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

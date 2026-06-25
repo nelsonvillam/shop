@@ -23,7 +23,7 @@ services:
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
     depends_on:
       - mongo
       - redis

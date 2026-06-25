@@ -71,21 +71,25 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sshagent(['server-ssh-key']) {
+                withCredentials([
+                    string(credentialsId: 'mongo-user',     secretVariable: 'MONGO_USER'),
+                    string(credentialsId: 'mongo-password', secretVariable: 'MONGO_PASSWORD'),
+                    string(credentialsId: 'redis-host',     secretVariable: 'REDIS_HOST'),
+                    string(credentialsId: 'redis-port',     secretVariable: 'REDIS_PORT')
+                ]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no user@your-server '
-                            docker pull ${IMAGE_NAME}:${IMAGE_TAG} &&
-                            docker stop shop || true &&
-                            docker rm shop || true &&
-                            docker run -d \\
-                                --name shop \\
-                                --restart unless-stopped \\
-                                -p 8080:8080 \\
-                                -e SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/shop \\
-                                -e SPRING_REDIS_HOST=redis \\
-                                -e SPRING_REDIS_PORT=6379 \\
-                                ${IMAGE_NAME}:${IMAGE_TAG}
-                        '
+                        docker stop shop || true
+                        docker rm shop || true
+                        docker run -d \\
+                            --name shop \\
+                            --restart unless-stopped \\
+                            -p 8080:8080 \\
+                            -e SPRING_PROFILES_ACTIVE=prod \\
+                            -e MONGO_USER=${MONGO_USER} \\
+                            -e MONGO_PASSWORD=${MONGO_PASSWORD} \\
+                            -e REDIS_HOST=${REDIS_HOST} \\
+                            -e REDIS_PORT=${REDIS_PORT} \\
+                            ${IMAGE_NAME}:${IMAGE_TAG}
                     """
                 }
             }

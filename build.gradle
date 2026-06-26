@@ -89,6 +89,7 @@ jacocoTestReport {
             '**/model/**',
             '**/mapper/**',
             '**/config/**',
+            '**/*Application*',
         ])
     }))
     reports {

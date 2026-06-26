@@ -98,6 +98,7 @@ jacocoTestReport {
 | `entity` | Persistence entities — no business logic |
 | `mapper` | MapStruct generated code |
 | `config` | Spring configuration classes |
+| `*Application*` | Spring Boot entry point — no business logic |
 
 Coverage is measured only on `controller`, `service`, and `repository` packages.
 

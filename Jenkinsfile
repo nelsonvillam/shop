@@ -57,7 +57,12 @@ pipeline {
             }
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    sh './gradlew jacocoTestReport sonar --no-daemon'
+                    withCredentials([
+                        string(credentialsId: 'sonar-project-key',  variable: 'SONAR_PROJECT_KEY'),
+                        string(credentialsId: 'sonar-organization',  variable: 'SONAR_ORGANIZATION')
+                    ]) {
+                        sh './gradlew jacocoTestReport sonar --no-daemon'
+                    }
                 }
             }
         }

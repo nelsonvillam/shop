@@ -83,8 +83,8 @@ jacocoTestReport {
 
 sonar {
     properties {
-        property 'sonar.projectKey',  'shop'
-        property 'sonar.projectName', 'shop'
+        property 'sonar.projectKey',   System.getenv('SONAR_PROJECT_KEY') ?: 'shop'
+        property 'sonar.organization', System.getenv('SONAR_ORGANIZATION') ?: ''
         property 'sonar.coverage.jacoco.xmlReportPaths', 'build/reports/jacoco/test/jacocoTestReport.xml'
     }
 }

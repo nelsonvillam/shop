@@ -117,11 +117,11 @@ Report output: `build/reports/jacoco/test/html/index.html`
 
 ```groovy
 triggers {
-    pollSCM('* * * * *')
+    githubPush()
 }
 ```
 
-Polls GitHub every minute and triggers the pipeline automatically when new commits are detected. Used instead of webhooks because Jenkins runs locally and is not reachable from GitHub.
+Triggers the pipeline instantly when GitHub sends a push event via webhook. Requires ngrok running to expose the local Jenkins instance to GitHub.
 
 ---
 

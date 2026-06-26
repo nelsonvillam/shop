@@ -114,8 +114,6 @@ pmd {
 spotbugs {
     toolVersion = '4.8.6'
     ignoreFailures = false
-    effort = com.github.spotbugs.snom.Effort.DEFAULT
-    reportLevel = com.github.spotbugs.snom.Confidence.HIGH
     excludeFilter = file('config/spotbugs/exclude.xml')
 }
 

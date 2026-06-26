@@ -76,6 +76,15 @@ jacoco {
 jacocoTestReport {
     dependsOn test, integrationTest
     executionData fileTree(project.buildDir).include('jacoco/*.exec')
+    classDirectories.setFrom(files(classDirectories.files.collect {
+        fileTree(dir: it, exclude: [
+            '**/dto/**',
+            '**/entity/**',
+            '**/model/**',
+            '**/mapper/**',
+            '**/config/**',
+        ])
+    }))
     reports {
         xml.required  = true
         html.required = true

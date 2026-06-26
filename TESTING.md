@@ -123,6 +123,65 @@ triggers {
 
 Polls GitHub every minute and triggers the pipeline automatically when new commits are detected. Used instead of webhooks because Jenkins runs locally and is not reachable from GitHub.
 
+---
+
+### Triggering via GitHub Webhooks (when Jenkins is publicly accessible)
+
+If Jenkins is hosted on a server reachable from the internet (e.g. a VPS, cloud VM, or exposed via ngrok), webhooks can replace `pollSCM` for instant pipeline triggering on every push — no polling delay.
+
+#### Prerequisites
+
+- **GitHub plugin** installed in Jenkins (`Manage Jenkins → Plugins → Installed` — search for "GitHub")
+- Jenkins URL must be publicly accessible (e.g. `https://jenkins.example.com`)
+
+#### Step 1 — Update the Jenkinsfile trigger
+
+Replace `pollSCM` with `githubPush()`:
+
+```groovy
+triggers {
+    githubPush()
+}
+```
+
+#### Step 2 — Configure the GitHub server in Jenkins
+
+1. Go to **Manage Jenkins → Configure System**
+2. Scroll to **GitHub** section → click **Add GitHub Server**
+3. Set the API URL to `https://api.github.com`
+4. Add a GitHub Personal Access Token as credentials (needs `repo` and `admin:repo_hook` scopes)
+5. Click **Test connection** to verify
+
+#### Step 3 — Add the webhook in GitHub
+
+1. Go to your GitHub repository → **Settings → Webhooks → Add webhook**
+2. Set **Payload URL** to: `https://<your-jenkins-url>/github-webhook/`
+3. Set **Content type** to `application/json`
+4. Select **Just the push event**
+5. Check **Active** and click **Add webhook**
+
+GitHub will send a ping request immediately — a green checkmark confirms Jenkins received it.
+
+#### Step 4 — Run the pipeline once manually
+
+After updating the Jenkinsfile, run the pipeline once manually in Jenkins so it registers the new `githubPush()` trigger. From that point on, every push to GitHub will trigger the pipeline instantly.
+
+#### Using ngrok for local Jenkins
+
+If Jenkins is still running locally but you want to test webhooks, ngrok can temporarily expose it:
+
+```bash
+ngrok http 8080
+```
+
+Use the generated URL (e.g. `https://abc123.ngrok.io`) as the webhook Payload URL:
+
+```
+https://abc123.ngrok.io/github-webhook/
+```
+
+> The ngrok URL changes on every restart unless you have a paid static domain. For a stable local setup, `pollSCM` is more practical.
+
 ### Environment Variables
 
 | Variable | Value | Purpose |

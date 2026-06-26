@@ -88,6 +88,19 @@ class ProductControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void findAll_whenSearchIsBlank_returnsAllProducts() {
+        restTemplate.postForEntity("/api/products", buildRequest("Laptop", 999.99, 10), ProductResponseDTO.class);
+        restTemplate.postForEntity("/api/products", buildRequest("Mouse", 29.99, 50), ProductResponseDTO.class);
+
+        ResponseEntity<List<ProductResponseDTO>> response = restTemplate.exchange(
+                "/api/products?search=", HttpMethod.GET, null,
+                new ParameterizedTypeReference<>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).hasSize(2);
+    }
+
+    @Test
     void updateProduct_returnsUpdatedBody() {
         ProductResponseDTO created = restTemplate.postForEntity(
                 "/api/products", buildRequest("Laptop", 999.99, 10), ProductResponseDTO.class).getBody();

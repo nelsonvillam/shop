@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        pollSCM('* * * * *')
+    }
+
     environment {
         IMAGE_NAME        = 'nelsonvillam/shop'
         IMAGE_TAG         = "${env.BUILD_NUMBER}"

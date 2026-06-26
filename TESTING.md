@@ -111,6 +111,98 @@ Report output: `build/reports/jacoco/test/html/index.html`
 
 ---
 
+## Linting (`build.gradle`)
+
+Four static analysis tools run on every pipeline build before tests execute.
+
+### Tools
+
+| Tool | Plugin | Version | What It Checks |
+|---|---|---|---|
+| Checkstyle | `checkstyle` (built-in) | 10.17.0 | Code style: naming conventions, import rules, formatting |
+| PMD | `pmd` (built-in) | 7.5.0 | Best practices and error-prone patterns in source code |
+| SpotBugs | `com.github.spotbugs` | 4.8.6 | Bug patterns in compiled bytecode |
+| ErrorProne | `net.ltgt.errorprone` | 4.0.1 | Compiler-level bug detection (runs during `compileJava`) |
+
+### Running Lint Locally
+
+```bash
+# Run all three lint tasks at once
+./gradlew checkstyleMain pmdMain spotbugsMain --no-daemon
+
+# Run individually
+./gradlew checkstyleMain
+./gradlew pmdMain
+./gradlew spotbugsMain
+```
+
+ErrorProne runs automatically during `./gradlew compileJava` — there is no separate task.
+
+### Configuration Files
+
+| Tool | Config File | Purpose |
+|---|---|---|
+| Checkstyle | `config/checkstyle/checkstyle.xml` | Defines style rules (naming, imports, formatting) |
+| PMD | `config/pmd/ruleset.xml` | Selects rule categories and excludes false positives |
+| SpotBugs | `config/spotbugs/exclude.xml` | Excludes classes and bug patterns that are false positives |
+
+### Rules and Suppressions
+
+**Checkstyle** enforces:
+- No star imports (`import x.y.*`)
+- No unused imports
+- Specific naming conventions (camelCase methods, UPPER_CASE constants, etc.)
+- Empty catch block detection
+- `equals()`/`hashCode()` pair enforcement
+
+**PMD** uses `category/java/bestpractices.xml` and `category/java/errorprone.xml` with the following suppressions:
+
+| Excluded Rule | Reason |
+|---|---|
+| `LooseCoupling` | MongoDB `Document` is the correct concrete type in MongoDB config classes |
+| `AvoidDuplicateLiterals` | Annotation parameters like `"404"` and `"bsonType"` are intentional |
+| `AvoidLiteralsInIfCondition` | Simple numeric guards like `stock < 1` are intentional |
+| `GuardLogStatement` | Not applicable to this project's logging style |
+| `JUnitTestContainsTooManyAsserts` | Integration tests naturally have multiple assertions |
+| `JUnitAssertionsShouldIncludeMessage` | Too verbose for this codebase |
+
+**SpotBugs** excludes:
+- `.*MapperImpl` — MapStruct-generated code, not hand-written
+- `.*Application` — Spring Boot entry point, not business logic
+- `EI_EXPOSE_REP` / `EI_EXPOSE_REP2` — Lombok `@Data` generates getters that return direct references to mutable collections; expected behavior in Spring Boot DTOs and entities
+
+### HTML Reports in Jenkins
+
+After each build, lint report links appear on the Jenkins build page:
+
+| Link | Source File |
+|---|---|
+| Checkstyle Report | `build/reports/checkstyle/main.html` |
+| PMD Report | `build/reports/pmd/main.html` |
+| SpotBugs Report | `build/reports/spotbugs/main.html` |
+
+### Jenkins Pipeline Stage
+
+The `Lint` stage runs before `Tests` using a Docker agent:
+
+```groovy
+stage('Lint') {
+    agent {
+        docker {
+            image 'eclipse-temurin:21-jdk'
+            args "-e HOME=${env.WORKSPACE}"
+        }
+    }
+    steps {
+        sh './gradlew checkstyleMain pmdMain spotbugsMain --no-daemon'
+    }
+}
+```
+
+`-e HOME=${env.WORKSPACE}` is passed to the Docker container so tools that need to write to the home directory (e.g. Gradle cache) do not fail due to the read-only `/` root inside the container.
+
+---
+
 ## Jenkins Pipeline (`Jenkinsfile`)
 
 ### Trigger
@@ -196,16 +288,17 @@ https://abc123.ngrok.io/github-webhook/
 ### Pipeline Stages
 
 ```
-                       ┌─ Unit Test ────────┐
-Checkout → Tests ──────┤                    ├──→ SonarQube Analysis → Quality Gate → Build → Docker Build → Docker Push → Deploy
-                       └─ Integration Test ─┘
+                                    ┌─ Unit Test ────────┐
+Checkout → Lint → Tests ────────────┤                    ├──→ SonarQube Analysis → Quality Gate → Build → Docker Build → Docker Push → Deploy
+                                    └─ Integration Test ─┘
 ```
 
-Unit Test and Integration Test run in parallel inside the `Tests` stage. SonarQube Analysis waits for both to complete before running.
+The `Lint` stage runs Checkstyle, PMD, and SpotBugs before any tests. Unit Test and Integration Test run in parallel inside the `Tests` stage. SonarQube Analysis waits for both to complete before running.
 
 | Stage | Agent | Command | Notes |
 |---|---|---|---|
 | Checkout | Jenkins host | `checkout scm` | Fetches source from GitHub |
+| Lint | `eclipse-temurin:21-jdk` | `./gradlew checkstyleMain pmdMain spotbugsMain` | Runs all three lint tools; fails fast on any violation |
 | Tests / Unit Test | `eclipse-temurin:21-jdk` | `./gradlew test` | Runs unit tests in parallel with integration tests |
 | Tests / Integration Test | Jenkins host | `./gradlew integrationTest` | Runs IT tests via Testcontainers in parallel with unit tests |
 | SonarQube Analysis | `eclipse-temurin:21-jdk` | `./gradlew jacocoTestReport sonar` | Merges coverage from both test runs, sends to SonarCloud |

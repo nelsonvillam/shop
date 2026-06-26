@@ -4,7 +4,6 @@ import com.example.shop.dto.OrderDetailResponseDTO;
 import com.example.shop.dto.OrderRequestDTO;
 import com.example.shop.dto.OrderResponseDTO;
 import com.example.shop.mapper.OrderMapper;
-import com.example.shop.model.Customer;
 import com.example.shop.model.Order;
 import com.example.shop.model.OrderDetail;
 import com.example.shop.model.Product;
@@ -50,12 +49,10 @@ class OrderServiceTest {
     private Order order;
     private OrderRequestDTO requestDTO;
     private OrderResponseDTO responseDTO;
-    private Customer customer;
     private Product product;
 
     @BeforeEach
     void setUp() {
-        customer = new Customer(customerId.toHexString(), "Alice", "alice@test.com", null);
         product  = new Product(productId.toHexString(), "Laptop", "desc", 999.99, 5);
 
         order = new Order();
@@ -103,7 +100,7 @@ class OrderServiceTest {
 
     @Test
     void create_whenValid_computesTotalAndSaves() {
-        when(customerRepository.findById(customerId.toHexString())).thenReturn(Optional.of(customer));
+        when(customerRepository.existsById(customerId.toHexString())).thenReturn(true);
         when(productRepository.findAllById(List.of(productId.toHexString()))).thenReturn(List.of(product));
         when(orderMapper.toEntity(requestDTO)).thenReturn(order);
         when(orderRepository.save(order)).thenReturn(order);
@@ -118,7 +115,7 @@ class OrderServiceTest {
 
     @Test
     void create_whenCustomerNotFound_throwsException() {
-        when(customerRepository.findById(customerId.toHexString())).thenReturn(Optional.empty());
+        when(customerRepository.existsById(customerId.toHexString())).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.create(requestDTO))
                 .isInstanceOf(RuntimeException.class)
@@ -127,7 +124,7 @@ class OrderServiceTest {
 
     @Test
     void create_whenProductMissing_throwsException() {
-        when(customerRepository.findById(customerId.toHexString())).thenReturn(Optional.of(customer));
+        when(customerRepository.existsById(customerId.toHexString())).thenReturn(true);
         when(productRepository.findAllById(any())).thenReturn(List.of());
 
         assertThatThrownBy(() -> orderService.create(requestDTO))

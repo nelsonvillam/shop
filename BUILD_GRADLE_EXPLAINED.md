@@ -19,6 +19,11 @@ build.gradle
 ├── check
 ├── jacoco
 ├── jacocoTestReport
+├── checkstyle
+├── pmd
+├── spotbugs
+├── spotbugsMain
+├── tasks.withType(JavaCompile) — ErrorProne
 └── sonar
 ```
 
@@ -33,6 +38,10 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.5'
     id 'org.sonarqube' version '5.1.0.4882'
     id 'jacoco'
+    id 'checkstyle'
+    id 'pmd'
+    id 'com.github.spotbugs' version '6.0.19'
+    id 'net.ltgt.errorprone' version '4.0.1'
 }
 ```
 
@@ -45,6 +54,10 @@ Declares the Gradle plugins used in the project. Each plugin adds tasks and conf
 | `io.spring.dependency-management` | Works alongside the Spring Boot plugin to manage dependency versions automatically — no need to specify versions for Spring libraries. |
 | `org.sonarqube` | Adds the `sonar` task that sends code analysis and coverage data to SonarCloud. |
 | `jacoco` | Adds the `jacocoTestReport` task that generates test coverage reports from `.exec` files produced during test runs. |
+| `checkstyle` | Adds `checkstyleMain` and `checkstyleTest` tasks that enforce code style rules defined in `config/checkstyle/checkstyle.xml`. |
+| `pmd` | Adds `pmdMain` and `pmdTest` tasks that detect bad practices and error-prone patterns using rules in `config/pmd/ruleset.xml`. |
+| `com.github.spotbugs` | Adds `spotbugsMain` and `spotbugsTest` tasks that scan compiled bytecode for known bug patterns. |
+| `net.ltgt.errorprone` | Integrates Google's ErrorProne compiler into `compileJava` — detects bugs at compile time, no separate task needed. |
 
 ---
 
@@ -165,6 +178,14 @@ Declares all project dependencies grouped by configuration (scope).
 | `testcontainers:junit-jupiter` | JUnit 5 extension for Testcontainers (`@Testcontainers`, `@Container`) |
 | `httpclient5` | Apache HTTP client used to make real HTTP calls in integration tests |
 
+### `errorprone` — ErrorProne compiler dependency
+
+```groovy
+errorprone 'com.google.errorprone:error_prone_core:2.28.0'
+```
+
+The `errorprone` configuration is added by the `net.ltgt.errorprone` plugin. It injects ErrorProne's analysis engine into the Java compiler classpath so it runs alongside `javac` during `compileJava`. This is a compile-time-only dependency — it is not included in the final jar.
+
 ---
 
 ## `test`
@@ -282,6 +303,129 @@ Configures the `jacocoTestReport` task that generates the coverage report.
 | `exclude '**/config/**'` | Excludes Spring configuration classes — boilerplate wiring |
 | `xml.required = true` | Generates an XML report consumed by SonarCloud for quality gate analysis |
 | `html.required = true` | Generates an interactive HTML report published to Jenkins for visual inspection |
+
+---
+
+## `checkstyle`
+
+```groovy
+checkstyle {
+    toolVersion = '10.17.0'
+    configFile = file('config/checkstyle/checkstyle.xml')
+    ignoreFailures = false
+    maxWarnings = 0
+}
+```
+
+Configures the Checkstyle plugin.
+
+| Line | Purpose |
+|---|---|
+| `toolVersion = '10.17.0'` | Pins the Checkstyle engine version to avoid behavior changes from automatic upgrades |
+| `configFile = file('config/checkstyle/checkstyle.xml')` | Points to the project's custom rule set. Without this, Checkstyle would use a default (or no) config. |
+| `ignoreFailures = false` | Causes the build to fail when violations are found. Setting this to `true` would generate reports but not break the build. |
+| `maxWarnings = 0` | Treats any warning as a build failure — zero tolerance for style issues |
+
+The config file at `config/checkstyle/checkstyle.xml` enforces rules including: no star imports, no unused imports, naming conventions (camelCase methods, UPPER_CASE constants), empty catch block detection, and `equals()`/`hashCode()` pairing.
+
+---
+
+## `pmd`
+
+```groovy
+pmd {
+    toolVersion = '7.5.0'
+    ignoreFailures = false
+    ruleSets = []
+    ruleSetFiles = files('config/pmd/ruleset.xml')
+}
+```
+
+Configures the PMD plugin.
+
+| Line | Purpose |
+|---|---|
+| `toolVersion = '7.5.0'` | Pins the PMD version |
+| `ignoreFailures = false` | Fails the build on any violation |
+| `ruleSets = []` | Clears PMD's default built-in rule sets so only the project's custom set is used. Without this, PMD applies its own defaults in addition to the custom file. |
+| `ruleSetFiles = files('config/pmd/ruleset.xml')` | Points to the project's custom rule set |
+
+The config file at `config/pmd/ruleset.xml` includes `bestpractices` and `errorprone` rule categories with suppressions for rules that produce false positives in this project (e.g. `LooseCoupling` for MongoDB `Document`, `AvoidDuplicateLiterals` for annotation strings).
+
+---
+
+## `spotbugs`
+
+```groovy
+spotbugs {
+    toolVersion = '4.8.6'
+    ignoreFailures = false
+    excludeFilter = file('config/spotbugs/exclude.xml')
+}
+```
+
+Configures the SpotBugs plugin.
+
+| Line | Purpose |
+|---|---|
+| `toolVersion = '4.8.6'` | Pins the SpotBugs engine version |
+| `ignoreFailures = false` | Fails the build when bugs are found |
+| `excludeFilter = file('config/spotbugs/exclude.xml')` | Points to an XML filter file that suppresses known false positives |
+
+The exclude filter at `config/spotbugs/exclude.xml` suppresses: MapStruct-generated `*MapperImpl` classes, the Spring Boot `*Application` class, and the `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` patterns (Lombok `@Data` getters returning mutable collection references — expected in Spring Boot DTOs).
+
+---
+
+## `spotbugsMain`
+
+```groovy
+spotbugsMain {
+    reports {
+        html {
+            required = true
+            stylesheet = 'fancy-hist.xsl'
+        }
+        xml {
+            required = false
+        }
+    }
+}
+```
+
+Configures the report output for the `spotbugsMain` task specifically (SpotBugs creates separate tasks per source set).
+
+| Line | Purpose |
+|---|---|
+| `html { required = true }` | Generates an HTML report published to Jenkins for visual inspection |
+| `stylesheet = 'fancy-hist.xsl'` | Uses SpotBugs' built-in fancy stylesheet for a readable HTML layout |
+| `xml { required = false }` | Disables XML output — XML is only needed if consuming the report programmatically (e.g. SonarQube). HTML is sufficient here. |
+
+The report is written to `build/reports/spotbugs/main.html`.
+
+---
+
+## `tasks.withType(JavaCompile)` — ErrorProne
+
+```groovy
+tasks.withType(JavaCompile).configureEach {
+    options.fork = true
+    options.errorprone {
+        enabled = true
+        disableWarningsInGeneratedCode = true
+    }
+}
+```
+
+Configures ErrorProne for every compilation task (`compileJava`, `compileTestJava`, etc.).
+
+| Line | Purpose |
+|---|---|
+| `tasks.withType(JavaCompile).configureEach` | Applies the configuration to all Java compile tasks, not just `compileJava` |
+| `options.fork = true` | Runs the compiler in a forked JVM process. Required by ErrorProne — it must control the compiler's classpath and cannot run in-process with Gradle's JVM. |
+| `options.errorprone { enabled = true }` | Activates ErrorProne's analysis engine. Without this, the plugin is present but does nothing. |
+| `disableWarningsInGeneratedCode = true` | Suppresses ErrorProne warnings in generated files (MapStruct's `*MapperImpl`, Lombok's generated methods). Only hand-written code is checked. |
+
+ErrorProne runs as part of normal compilation — there is no separate Gradle task. Violations appear as compiler warnings or errors in the build output. Unlike Checkstyle/PMD/SpotBugs, ErrorProne catches bugs that would only surface at runtime (e.g. ignoring return values, using `LocalDateTime.now()` without an explicit timezone).
 
 ---
 

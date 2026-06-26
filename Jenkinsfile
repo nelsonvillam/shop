@@ -39,11 +39,12 @@ pipeline {
                 }
             }
             steps {
-                sh '''
-                    export TESTCONTAINERS_RYUK_DISABLED=true
-                    export TESTCONTAINERS_HOST_OVERRIDE=$(ip route show default | awk '/default/{print $3}')
-                    ./gradlew integrationTest --no-daemon
-                '''
+                withEnv([
+                    'TESTCONTAINERS_RYUK_DISABLED=true',
+                    'TESTCONTAINERS_HOST_OVERRIDE=172.17.0.1'
+                ]) {
+                    sh './gradlew integrationTest --no-daemon'
+                }
             }
             post {
                 always {

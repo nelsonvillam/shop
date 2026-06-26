@@ -101,17 +101,17 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
-            }
-        }
-
-        stage('Docker Push') {
-            steps {
-                sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
-                sh "docker push ${IMAGE_NAME}:latest"
+                sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
+                sh """
+                    docker buildx build \
+                        --platform linux/amd64,linux/arm64 \
+                        -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                        -t ${IMAGE_NAME}:latest \
+                        --push \
+                        .
+                """
             }
         }
 

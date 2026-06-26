@@ -160,6 +160,16 @@ class OrderServiceTest {
     }
 
     @Test
+    void placeOrder_whenProductMissing_throwsException() {
+        when(customerRepository.existsById(customerId.toHexString())).thenReturn(true);
+        when(productRepository.findAllById(any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> orderService.placeOrder(requestDTO, false))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("products not found");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void findDetailById_returnsMappedDTO() {
         String id = new ObjectId().toHexString();

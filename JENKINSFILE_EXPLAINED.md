@@ -13,7 +13,8 @@ pipeline
 ├── environment
 ├── stages
 │   ├── Checkout
-│   ├── Tests (parallel)
+│   ├── Lint
+│   ├── Tests (parallel, failFast)
 │   │   ├── Unit Test
 │   │   └── Integration Test
 │   ├── SonarQube Analysis
@@ -115,16 +116,51 @@ stage('Checkout') {
 
 ---
 
+### Stage: `Lint`
+
+```groovy
+stage('Lint') {
+    agent {
+        docker {
+            image 'eclipse-temurin:21-jdk'
+            reuseNode true
+            args "-e HOME=${env.WORKSPACE}"
+        }
+    }
+    steps {
+        sh './gradlew checkstyleMain pmdMain spotbugsMain --no-daemon'
+    }
+}
+```
+
+**When it runs:** after Checkout, before Tests.
+
+Runs three static analysis tools against the main source set inside an `eclipse-temurin:21-jdk` container:
+
+| Task | Tool | What it checks |
+|---|---|---|
+| `checkstyleMain` | Checkstyle | Code style: naming conventions, no star imports, no unused imports |
+| `pmdMain` | PMD | Best practices and error-prone patterns in source code |
+| `spotbugsMain` | SpotBugs | Bug patterns in compiled bytecode |
+
+A fourth tool, **ErrorProne**, runs automatically during compilation inside this stage (and every other stage that compiles Java) — it requires no separate task.
+
+The build fails immediately if any violation is found. HTML reports for all three tools are published in `post { always { } }` so they appear even on failed builds.
+
+---
+
 ### Stage: `Tests`
 
 ```groovy
 stage('Tests') {
+    failFast true
     parallel {
 ```
 
-**When it runs:** after Checkout completes.
+**When it runs:** after Lint completes.
 
-The `parallel` block runs its child stages **simultaneously** instead of sequentially. Both Unit Test and Integration Test start at the same time and the pipeline waits for both to finish before moving to the next stage.
+- `failFast true` — if either parallel branch fails, the other is **cancelled immediately** rather than waiting for it to finish. This saves time on broken builds.
+- `parallel` — runs Unit Test and Integration Test **simultaneously**. The pipeline waits for both to finish (or one to fail) before moving to SonarQube Analysis.
 
 ---
 
@@ -335,39 +371,24 @@ Defines actions that run **after all stages complete**, regardless of the pipeli
 
 ```groovy
 always {
-    publishHTML(target: [
-        reportName : 'Unit Test Report',
-        reportDir  : 'build/reports/tests/test',
-        reportFiles: 'index.html',
-        keepAll    : true,
-        allowMissing: true,
-        alwaysLinkToLastBuild: true
-    ])
-    publishHTML(target: [
-        reportName : 'Integration Test Report',
-        reportDir  : 'build/reports/tests/integrationTest',
-        reportFiles: 'index.html',
-        keepAll    : true,
-        allowMissing: true,
-        alwaysLinkToLastBuild: true
-    ])
-    publishHTML(target: [
-        reportName : 'Coverage Report',
-        reportDir  : 'build/reports/jacoco/test/html',
-        reportFiles: 'index.html',
-        keepAll    : true,
-        allowMissing: true,
-        alwaysLinkToLastBuild: true
-    ])
+    publishHTML(target: [reportName: 'Checkstyle Report', reportDir: 'build/reports/checkstyle', reportFiles: 'main.html', ...])
+    publishHTML(target: [reportName: 'PMD Report',        reportDir: 'build/reports/pmd',        reportFiles: 'main.html', ...])
+    publishHTML(target: [reportName: 'SpotBugs Report',   reportDir: 'build/reports/spotbugs',   reportFiles: 'main.html', ...])
+    publishHTML(target: [reportName: 'Unit Test Report',        reportDir: 'build/reports/tests/test',            reportFiles: 'index.html', ...])
+    publishHTML(target: [reportName: 'Integration Test Report', reportDir: 'build/reports/tests/integrationTest', reportFiles: 'index.html', ...])
+    publishHTML(target: [reportName: 'Coverage Report',         reportDir: 'build/reports/jacoco/test/html',      reportFiles: 'index.html', ...])
 }
 ```
 
 **When it runs:** after every build, whether it passed or failed.
 
-Publishes three HTML reports to the Jenkins build page using the HTML Publisher plugin:
+Publishes six HTML reports to the Jenkins build page using the HTML Publisher plugin:
 
 | Report | Source |
 |---|---|
+| Checkstyle Report | Checkstyle HTML report for style violations |
+| PMD Report | PMD HTML report for best-practice violations |
+| SpotBugs Report | SpotBugs HTML report for bug patterns |
 | Unit Test Report | Gradle's HTML test report for the `test` task |
 | Integration Test Report | Gradle's HTML test report for the `integrationTest` task |
 | Coverage Report | JaCoCo HTML coverage report combining both test runs |

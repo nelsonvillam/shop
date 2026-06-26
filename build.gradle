@@ -2,6 +2,8 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.3.0'
     id 'io.spring.dependency-management' version '1.1.5'
+    id 'org.sonarqube' version '5.1.0.4882'
+    id 'jacoco'
 }
 
 group = 'com.example'
@@ -66,3 +68,23 @@ tasks.register('integrationTest', Test) {
 }
 
 check.dependsOn integrationTest
+
+jacoco {
+    toolVersion = '0.8.12'
+}
+
+jacocoTestReport {
+    dependsOn test, integrationTest
+    executionData fileTree(project.buildDir).include('jacoco/*.exec')
+    reports {
+        xml.required = true
+    }
+}
+
+sonar {
+    properties {
+        property 'sonar.projectKey',  'shop'
+        property 'sonar.projectName', 'shop'
+        property 'sonar.coverage.jacoco.xmlReportPaths', 'build/reports/jacoco/test/jacocoTestReport.xml'
+    }
+}

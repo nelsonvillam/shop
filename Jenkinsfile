@@ -48,6 +48,28 @@ pipeline {
             }
         }
 
+        stage('SonarQube Analysis') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                }
+            }
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh './gradlew jacocoTestReport sonar --no-daemon'
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
         stage('Build') {
             agent {
                 docker {

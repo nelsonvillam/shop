@@ -151,6 +151,15 @@ class OrderServiceTest {
     }
 
     @Test
+    void placeOrder_whenCustomerNotFound_throwsException() {
+        when(customerRepository.existsById(customerId.toHexString())).thenReturn(false);
+
+        assertThatThrownBy(() -> orderService.placeOrder(requestDTO, false))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Customer not found");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void findDetailById_returnsMappedDTO() {
         String id = new ObjectId().toHexString();

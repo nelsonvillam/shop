@@ -2,8 +2,9 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'nelsonvillam/shop'
-        IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        IMAGE_NAME        = 'nelsonvillam/shop'
+        IMAGE_TAG         = "${env.BUILD_NUMBER}"
+        GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
     }
 
     stages {

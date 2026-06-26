@@ -28,7 +28,7 @@ pipeline {
                 }
             }
             steps {
-                sh './gradlew test --no-daemon'
+                sh './gradlew test jacocoTestReport --no-daemon'
             }
             post {
                 always {

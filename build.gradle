@@ -77,7 +77,8 @@ jacocoTestReport {
     dependsOn test, integrationTest
     executionData fileTree(project.buildDir).include('jacoco/*.exec')
     reports {
-        xml.required = true
+        xml.required  = true
+        html.required = true
     }
 }
 

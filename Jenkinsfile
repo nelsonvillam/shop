@@ -19,31 +19,34 @@ pipeline {
             }
         }
 
-        stage('Unit Test') {
-            agent {
-                docker {
-                    image 'eclipse-temurin:21-jdk'
-                    reuseNode true
-                    args "-e HOME=${env.WORKSPACE}"
+        stage('Tests') {
+            parallel {
+                stage('Unit Test') {
+                    agent {
+                        docker {
+                            image 'eclipse-temurin:21-jdk'
+                            reuseNode true
+                            args "-e HOME=${env.WORKSPACE}"
+                        }
+                    }
+                    steps {
+                        sh './gradlew test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit '**/build/test-results/test/**/*.xml'
+                        }
+                    }
                 }
-            }
-            steps {
-                sh './gradlew test jacocoTestReport --no-daemon'
-            }
-            post {
-                always {
-                    junit '**/build/test-results/test/**/*.xml'
-                }
-            }
-        }
-
-        stage('Integration Test') {
-            steps {
-                sh './gradlew integrationTest --no-daemon'
-            }
-            post {
-                always {
-                    junit '**/build/test-results/integrationTest/**/*.xml'
+                stage('Integration Test') {
+                    steps {
+                        sh './gradlew integrationTest --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit '**/build/test-results/integrationTest/**/*.xml'
+                        }
+                    }
                 }
             }
         }

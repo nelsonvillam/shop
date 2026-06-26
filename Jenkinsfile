@@ -1,6 +1,7 @@
 pipeline {
     agent any
 
+    // test webhook trigger
     triggers {
         githubPush()
     }

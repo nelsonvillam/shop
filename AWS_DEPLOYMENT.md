@@ -4,6 +4,24 @@ This guide deploys the shop application to an AWS free tier EC2 instance using D
 
 ---
 
+## Infrastructure Overview
+
+```
+[Developer laptop]
+        ↓  git push
+[GitHub repo]
+        ↓  webhook (HTTP POST)
+[Jenkins :8080]  →  builds, tests, pushes Docker image to Docker Hub
+                                              ↓
+                                    [Docker Hub]
+                                              ↓  docker-compose pull
+                              [EC2 instance :8081]
+                                              ↓
+                              [shop]  +  [MongoDB]  +  [Redis]
+```
+
+---
+
 ## Prerequisites
 
 - AWS free tier account
@@ -242,12 +260,45 @@ free -h
 
 ---
 
+## Rolling Back
+
+Each Jenkins build pushes two tags to Docker Hub: `nelsonvillam/shop:<BUILD_NUMBER>` and `nelsonvillam/shop:latest`. To roll back to a previous build:
+
+1. Update `docker-compose.yml` on the EC2 instance to pin the image to the previous build number:
+   ```yaml
+   image: nelsonvillam/shop:<previous-build-number>
+   ```
+2. Run:
+   ```bash
+   docker-compose up -d
+   ```
+3. Revert `docker-compose.yml` once the rollback is confirmed.
+
+---
+
+## Environment Variables
+
+These are set in `docker-compose.yml` and read from the `.env` file at runtime. Secrets are never committed to Git.
+
+| Variable | Value | Description |
+|---|---|---|
+| `MONGO_USER` | from `.env` | MongoDB username |
+| `MONGO_PASSWORD` | from `.env` | MongoDB password |
+| `SPRING_DATA_MONGODB_URI` | `mongodb://<user>:<pass>@mongo:27017/shop?authSource=admin` | Full MongoDB connection string |
+| `SPRING_REDIS_HOST` | `redis` | Redis service name (Docker internal DNS) |
+| `SPRING_REDIS_PORT` | `6379` | Redis port |
+
+`authSource=admin` is required because the root user is stored in the `admin` database.
+
+---
+
 ## Troubleshooting
 
 | Problem | Cause | Fix |
 |---|---|---|
 | Cannot SSH | Key permissions too open | Run `chmod 400 shop-key.pem` |
 | Port 8081 not reachable | Security group misconfigured | Add inbound rule for TCP 8081 in the AWS console |
-| App fails to start | Not enough memory | Add swap space (see above) |
+| App crashes or unresponsive | Not enough memory | Add swap space (see above) |
 | MongoDB auth error | Wrong credentials in `.env` | Check `MONGO_USER` and `MONGO_PASSWORD` match what MongoDB was initialized with |
 | Image not found | Docker Hub image not pushed | Run the Jenkins pipeline first to push `nelsonvillam/shop:latest` |
+| App can't connect to MongoDB | Wrong URI or auth | Check `SPRING_DATA_MONGODB_URI` and that `authSource=admin` is set |

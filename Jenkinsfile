@@ -41,9 +41,15 @@ pipeline {
             steps {
                 withEnv([
                     'TESTCONTAINERS_RYUK_DISABLED=true',
-                    'TESTCONTAINERS_HOST_OVERRIDE=172.17.0.1'
+                    'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal'
                 ]) {
-                    sh './gradlew integrationTest --no-daemon'
+                    sh '''
+                        echo "=== /etc/hosts ==="
+                        cat /etc/hosts
+                        echo "=== routing table ==="
+                        cat /proc/net/route
+                        ./gradlew integrationTest --no-daemon
+                    '''
                 }
             }
             post {

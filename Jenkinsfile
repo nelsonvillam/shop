@@ -48,6 +48,18 @@ pipeline {
             }
         }
 
+        stage('Build') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh './gradlew bootJar --no-daemon'
+            }
+        }
+
         stage('Docker Build') {
             steps {
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."

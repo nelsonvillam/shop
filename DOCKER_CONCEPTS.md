@@ -13,13 +13,14 @@ It doesn't build anything — it orchestrates multiple pre-built images together
 ### Dockerfile (build time)
 
 ```dockerfile
-FROM eclipse-temurin:21-jdk AS build   # compile stage
-  ./gradlew bootJar                    # produces shop-*.jar
-
-FROM eclipse-temurin:21-jre-alpine     # runtime stage
-  COPY --from=build ... app.jar        # lean final image
-  ENTRYPOINT ["java", "-jar", "app.jar"]
+FROM eclipse-temurin:21-jre-alpine     # minimal runtime base
+WORKDIR /app
+COPY build/libs/shop-0.0.1-SNAPSHOT.jar app.jar  # JAR built by Jenkins
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
+
+The JAR is compiled by Jenkins (`./gradlew bootJar`) before `docker build` runs, so the Dockerfile is a single stage — it only packages and runs the artifact. See [DOCKERFILE_EXPLAINED.md](DOCKERFILE_EXPLAINED.md) for a line-by-line breakdown.
 
 ### docker-compose.yml (run time)
 
@@ -52,6 +53,9 @@ The Jenkins pipeline is the **trigger and orchestrator**. docker-compose is the 
 ```
 Jenkinsfile                          docker-compose.yml
 ──────────────────────────────────────────────────────────────
+stage('Build')
+  ./gradlew bootJar              ──► build/libs/shop-0.0.1-SNAPSHOT.jar
+
 stage('Docker Build')
   docker build -t nelsonvillam/shop:BUILD_NUMBER .
   docker tag ... nelsonvillam/shop:latest        ──► image: nelsonvillam/shop:latest
@@ -80,7 +84,7 @@ mongodb://user:pass@mongo:27017/shop?authSource=admin
 ```
 
 **3. docker-compose is only involved in the last stage.**
-The first five stages — checkout, unit test, integration test, docker build, docker push — have nothing to do with docker-compose. It only appears at deploy time.
+The earlier stages — checkout, unit test, integration test, SonarQube analysis, quality gate, build, docker build, docker push — have nothing to do with docker-compose. It only appears at deploy time.
 
 **4. Every push to `main` triggers a full redeploy.**
 The pipeline ends by running `docker compose down` followed by `docker compose up -d`, bringing up a fresh stack with the newly built image while preserving data in the `mongo-data` and `redis-data` named volumes.

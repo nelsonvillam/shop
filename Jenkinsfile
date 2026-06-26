@@ -6,7 +6,6 @@ pipeline {
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
         SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
-        HOME              = "${env.WORKSPACE}"
     }
 
     stages {
@@ -21,6 +20,7 @@ pipeline {
                 docker {
                     image 'eclipse-temurin:21-jdk'
                     reuseNode true
+                    args "-e HOME=${env.WORKSPACE}"
                 }
             }
             steps {
@@ -49,6 +49,7 @@ pipeline {
                 docker {
                     image 'eclipse-temurin:21-jdk'
                     reuseNode true
+                    args "-e HOME=${env.WORKSPACE}"
                 }
             }
             steps {
@@ -71,6 +72,7 @@ pipeline {
                 docker {
                     image 'eclipse-temurin:21-jdk'
                     reuseNode true
+                    args "-e HOME=${env.WORKSPACE}"
                 }
             }
             steps {

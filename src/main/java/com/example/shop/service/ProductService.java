@@ -46,7 +46,7 @@ public class ProductService {
     }
 
     public Page<ProductResponseDTO> findPaged(int page, int size, String sortBy, String sortDir) {
-        Sort sort = sortDir.equalsIgnoreCase("desc")
+        Sort sort = "desc".equalsIgnoreCase(sortDir)
                 ? Sort.by(sortBy).descending()
                 : Sort.by(sortBy).ascending();
         return productRepository.findAll(PageRequest.of(page, size, sort))

@@ -10,10 +10,16 @@
         <exclude name="GuardLogStatement"/>
         <exclude name="JUnitTestContainsTooManyAsserts"/>
         <exclude name="JUnitAssertionsShouldIncludeMessage"/>
+        <!-- MongoDB Document is the correct type in MongoDB config classes -->
+        <exclude name="LooseCoupling"/>
     </rule>
 
     <rule ref="category/java/errorprone.xml">
         <exclude name="NullAssignment"/>
+        <!-- Annotation parameters like "404", "bsonType" are intentional string literals -->
+        <exclude name="AvoidDuplicateLiterals"/>
+        <!-- Simple numeric guards like stock < 1 are readable and intentional -->
+        <exclude name="AvoidLiteralsInIfCondition"/>
     </rule>
 
 </ruleset>

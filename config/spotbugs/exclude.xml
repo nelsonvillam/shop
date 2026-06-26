@@ -14,4 +14,13 @@
         <Class name="~.*Application"/>
     </Match>
 
+    <!-- Lombok @Data generates getters/setters that return direct references to mutable
+         collections. This is expected behavior in Spring Boot DTOs and entities. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
 </FindBugsFilter>

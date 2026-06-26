@@ -145,9 +145,7 @@ services:
       - "8081:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      MONGO_HOST: mongo
-      MONGO_USER: ${MONGO_USER}
-      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
@@ -286,13 +284,13 @@ These are set in `docker-compose.yml` and read from the `.env` file at runtime. 
 | Variable | Value | Description |
 |---|---|---|
 | `SPRING_PROFILES_ACTIVE` | `prod` | Activates `application-prod.properties` |
-| `MONGO_HOST` | `mongo` | MongoDB service name (Docker internal DNS) |
-| `MONGO_USER` | from `.env` | MongoDB username |
-| `MONGO_PASSWORD` | from `.env` | MongoDB password |
+| `SPRING_DATA_MONGODB_URI` | `mongodb://<user>:<pass>@mongo:27017/shop?authSource=admin` | Full connection string — overrides the properties file directly |
+| `MONGO_USER` | from `.env` | MongoDB username (used inside the URI) |
+| `MONGO_PASSWORD` | from `.env` | MongoDB password (used inside the URI) |
 | `REDIS_HOST` | `redis` | Redis service name (Docker internal DNS) |
 | `REDIS_PORT` | `6379` | Redis port |
 
-`authSource=admin` is appended automatically by `application-prod.properties`.
+`authSource=admin` is required because the root user is stored in the `admin` database. Setting `SPRING_DATA_MONGODB_URI` as an environment variable overrides `application-prod.properties` regardless of what the properties file contains.
 
 ---
 

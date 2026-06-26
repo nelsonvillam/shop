@@ -116,6 +116,24 @@ pipeline {
     }
 
     post {
+        always {
+            publishHTML(target: [
+                reportName : 'Test Report',
+                reportDir  : 'build/reports/tests/test',
+                reportFiles: 'index.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
+            publishHTML(target: [
+                reportName : 'Coverage Report',
+                reportDir  : 'build/reports/jacoco/test/html',
+                reportFiles: 'index.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
+        }
         success {
             echo "Deployment of ${IMAGE_NAME}:${IMAGE_TAG} succeeded."
         }

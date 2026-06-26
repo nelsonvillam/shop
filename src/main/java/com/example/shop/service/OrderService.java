@@ -57,8 +57,9 @@ public class OrderService {
     }
 
     public OrderResponseDTO create(OrderRequestDTO dto) {
-        customerRepository.findById(dto.getCustomerId())
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + dto.getCustomerId()));
+        if (!customerRepository.existsById(dto.getCustomerId())) {
+            throw new RuntimeException("Customer not found: " + dto.getCustomerId());
+        }
 
         List<Product> products = productRepository.findAllById(dto.getProductIds());
         if (products.size() != dto.getProductIds().size()) {
@@ -84,8 +85,9 @@ public class OrderService {
 
     @Transactional
     public OrderResponseDTO placeOrder(OrderRequestDTO dto, boolean simulateFail) {
-        customerRepository.findById(dto.getCustomerId())
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + dto.getCustomerId()));
+        if (!customerRepository.existsById(dto.getCustomerId())) {
+            throw new RuntimeException("Customer not found: " + dto.getCustomerId());
+        }
 
         List<Product> products = productRepository.findAllById(dto.getProductIds());
         if (products.size() != dto.getProductIds().size()) {

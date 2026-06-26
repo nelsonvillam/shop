@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 // ONE-TO-MANY  : customerId references the Customer collection
@@ -38,7 +39,7 @@ public class Order {
 
     private OrderStatus status = OrderStatus.PENDING;
 
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(ZoneId.systemDefault());
 
     private double total;
 

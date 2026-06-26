@@ -20,8 +20,26 @@ Jenkins and DinD run as Docker containers on the same host, connected via a shar
 
 ## Pipeline stages
 
-```
-Checkout → Unit Test → Integration Test → Docker Build → Docker Push → Deploy
+```mermaid
+flowchart TD
+    A([Push to main]) --> B[Checkout]
+    B --> C[Unit Test\n./gradlew test]
+    C --> D[Integration Test\n./gradlew integrationTest]
+    D --> E[Docker Build\ndocker build + tag]
+    E --> F[Docker Push\nDocker Hub]
+    F --> G[Deploy\ndocker compose up]
+
+    C -->|JUnit results| R1[Test Report]
+    D -->|JUnit results| R2[Test Report]
+
+    G --> H[(MongoDB)]
+    G --> I[(Redis)]
+    G --> J[shop:8081]
+
+    style A fill:#4CAF50,color:#fff
+    style J fill:#2196F3,color:#fff
+    style H fill:#4CAF50,color:#fff
+    style I fill:#f44336,color:#fff
 ```
 
 ### 1. Checkout

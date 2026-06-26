@@ -193,9 +193,12 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
+      SPRING_PROFILES_ACTIVE: prod
+      MONGO_HOST: mongo
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       - mongo
       - redis
@@ -284,13 +287,14 @@ These are set by `docker-compose.yml` at runtime. Secrets are never committed to
 
 | Variable | Value | Description |
 |---|---|---|
+| `SPRING_PROFILES_ACTIVE` | `prod` | Activates `application-prod.properties` |
+| `MONGO_HOST` | `mongo` | MongoDB service name (Docker internal DNS) |
 | `MONGO_USER` | from Jenkins secret / `.env` | MongoDB username |
 | `MONGO_PASSWORD` | from Jenkins secret / `.env` | MongoDB password |
-| `SPRING_DATA_MONGODB_URI` | `mongodb://<user>:<pass>@mongo:27017/shop?authSource=admin` | Full MongoDB connection string |
-| `SPRING_REDIS_HOST` | `redis` | Redis service name (Docker internal DNS) |
-| `SPRING_REDIS_PORT` | `6379` | Redis port |
+| `REDIS_HOST` | `redis` | Redis service name (Docker internal DNS) |
+| `REDIS_PORT` | `6379` | Redis port |
 
-`authSource=admin` is required because the root user is stored in the `admin` database.
+`authSource=admin` is appended automatically by `application-prod.properties`.
 
 ---
 

@@ -118,8 +118,16 @@ pipeline {
     post {
         always {
             publishHTML(target: [
-                reportName : 'Test Report',
+                reportName : 'Unit Test Report',
                 reportDir  : 'build/reports/tests/test',
+                reportFiles: 'index.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
+            publishHTML(target: [
+                reportName : 'Integration Test Report',
+                reportDir  : 'build/reports/tests/integrationTest',
                 reportFiles: 'index.html',
                 keepAll    : true,
                 allowMissing: true,

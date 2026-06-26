@@ -19,6 +19,19 @@ pipeline {
             }
         }
 
+        stage('Lint') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                    args "-e HOME=${env.WORKSPACE}"
+                }
+            }
+            steps {
+                sh './gradlew checkstyleMain pmdMain spotbugsMain --no-daemon'
+            }
+        }
+
         stage('Tests') {
             parallel {
                 failFast true
@@ -121,6 +134,30 @@ pipeline {
 
     post {
         always {
+            publishHTML(target: [
+                reportName : 'Checkstyle Report',
+                reportDir  : 'build/reports/checkstyle',
+                reportFiles: 'main.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
+            publishHTML(target: [
+                reportName : 'PMD Report',
+                reportDir  : 'build/reports/pmd',
+                reportFiles: 'main.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
+            publishHTML(target: [
+                reportName : 'SpotBugs Report',
+                reportDir  : 'build/reports/spotbugs',
+                reportFiles: 'main.html',
+                keepAll    : true,
+                allowMissing: true,
+                alwaysLinkToLastBuild: true
+            ])
             publishHTML(target: [
                 reportName : 'Unit Test Report',
                 reportDir  : 'build/reports/tests/test',

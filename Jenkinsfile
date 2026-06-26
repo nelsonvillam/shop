@@ -5,7 +5,8 @@ pipeline {
         IMAGE_NAME        = 'nelsonvillam/shop'
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
-        SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"   // 
+        SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
+        HOME              = "${env.WORKSPACE}"
     }
 
     stages {

@@ -35,11 +35,13 @@ pipeline {
                 docker {
                     image 'eclipse-temurin:21-jdk'
                     reuseNode true
-                    args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock -u root --network=host'
                 }
             }
             steps {
-                sh './gradlew integrationTest --no-daemon'
+                withEnv(['TESTCONTAINERS_RYUK_DISABLED=true']) {
+                    sh './gradlew integrationTest --no-daemon'
+                }
             }
             post {
                 always {

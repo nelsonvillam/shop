@@ -137,15 +137,19 @@ Polls GitHub every minute and triggers the pipeline automatically when new commi
 ### Pipeline Stages
 
 ```
-Checkout → Unit Test → Integration Test → SonarQube Analysis → Quality Gate → Build → Docker Build → Docker Push → Deploy
+                       ┌─ Unit Test ────────┐
+Checkout → Tests ──────┤                    ├──→ SonarQube Analysis → Quality Gate → Build → Docker Build → Docker Push → Deploy
+                       └─ Integration Test ─┘
 ```
+
+Unit Test and Integration Test run in parallel inside the `Tests` stage. SonarQube Analysis waits for both to complete before running.
 
 | Stage | Agent | Command | Notes |
 |---|---|---|---|
 | Checkout | Jenkins host | `checkout scm` | Fetches source from GitHub |
-| Unit Test | `eclipse-temurin:21-jdk` | `./gradlew test jacocoTestReport` | Runs unit tests and generates coverage |
-| Integration Test | Jenkins host | `./gradlew integrationTest` | Runs IT tests via Testcontainers |
-| SonarQube Analysis | `eclipse-temurin:21-jdk` | `./gradlew jacocoTestReport sonar` | Sends coverage + analysis to SonarCloud |
+| Tests / Unit Test | `eclipse-temurin:21-jdk` | `./gradlew test` | Runs unit tests in parallel with integration tests |
+| Tests / Integration Test | Jenkins host | `./gradlew integrationTest` | Runs IT tests via Testcontainers in parallel with unit tests |
+| SonarQube Analysis | `eclipse-temurin:21-jdk` | `./gradlew jacocoTestReport sonar` | Merges coverage from both test runs, sends to SonarCloud |
 | Quality Gate | Jenkins host | `waitForQualityGate` | Aborts pipeline if SonarCloud gate fails |
 | Build | `eclipse-temurin:21-jdk` | `./gradlew bootJar` | Builds the Spring Boot fat jar |
 | Docker Build | Jenkins host | `docker build` | Builds and tags the Docker image |

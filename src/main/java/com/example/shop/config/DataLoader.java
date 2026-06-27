@@ -10,7 +10,6 @@ import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
 import com.example.shop.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,7 +23,6 @@ import java.util.List;
 @Slf4j
 @Component
 @org.springframework.core.annotation.Order(2)
-@RequiredArgsConstructor
 public class DataLoader implements ApplicationRunner {
 
     private final CustomerRepository customerRepository;
@@ -32,13 +30,25 @@ public class DataLoader implements ApplicationRunner {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final String adminPassword;
 
-    @Value("${app.admin.password}")
-    private String adminPassword;
+    public DataLoader(CustomerRepository customerRepository,
+                      ProductRepository productRepository,
+                      OrderRepository orderRepository,
+                      UserRepository userRepository,
+                      PasswordEncoder passwordEncoder,
+                      @Value("${app.admin.password:}") String adminPassword) {
+        this.customerRepository = customerRepository;
+        this.productRepository = productRepository;
+        this.orderRepository = orderRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.adminPassword = adminPassword;
+    }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (userRepository.findByUsername("admin").isEmpty()) {
+        if (!adminPassword.isBlank() && userRepository.findByUsername("admin").isEmpty()) {
             User admin = new User();
             admin.setUsername("admin");
             admin.setPassword(passwordEncoder.encode(adminPassword));

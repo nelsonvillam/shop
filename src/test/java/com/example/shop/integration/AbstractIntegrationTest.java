@@ -3,12 +3,16 @@ package com.example.shop.integration;
 import com.example.shop.dto.AuthRequestDTO;
 import com.example.shop.dto.AuthResponseDTO;
 import com.example.shop.dto.RegisterRequestDTO;
+import com.example.shop.model.Role;
+import com.example.shop.model.User;
+import com.example.shop.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -16,7 +20,7 @@ import org.testcontainers.containers.MongoDBContainer;
 
 import java.util.ArrayList;
 
-@SuppressWarnings("PMD.AbstractClassWithoutAbstractMethod")
+@SuppressWarnings({"PMD.AbstractClassWithoutAbstractMethod", "java:S2068"})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class AbstractIntegrationTest {
 
@@ -34,8 +38,18 @@ public abstract class AbstractIntegrationTest {
         redisContainer.start();
     }
 
+    // Test-only admin credentials — DataLoader skips admin seeding when ADMIN_PASSWORD env var is blank
+    private static final String ADMIN_TEST_USER = "admin";
+    private static final String ADMIN_TEST_PASS = "admin-integration-test";
+
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @DynamicPropertySource
     static void containerProperties(DynamicPropertyRegistry registry) {
@@ -45,15 +59,23 @@ public abstract class AbstractIntegrationTest {
     }
 
     @BeforeEach
-    @SuppressWarnings("java:S2068")
     void setUpAuth() {
         // Register test user — 409 if already exists, which is fine (used in AuthControllerIT tests)
         restTemplate.postForEntity("/auth/register",
                 new RegisterRequestDTO("testuser", "password123"), AuthResponseDTO.class);
 
-        // Admin user is seeded by DataLoader — authenticate as admin so all CRUD tests pass
+        // DataLoader skips admin when ADMIN_PASSWORD env var is blank in test context.
+        // Create admin directly via repository so CRUD tests can authenticate as ROLE_ADMIN.
+        if (userRepository.findByUsername(ADMIN_TEST_USER).isEmpty()) {
+            User admin = new User();
+            admin.setUsername(ADMIN_TEST_USER);
+            admin.setPassword(passwordEncoder.encode(ADMIN_TEST_PASS));
+            admin.setRole(Role.ROLE_ADMIN);
+            userRepository.save(admin);
+        }
+
         AuthResponseDTO auth = restTemplate.postForEntity("/auth/login",
-                new AuthRequestDTO("admin", "admin123"), AuthResponseDTO.class).getBody();
+                new AuthRequestDTO(ADMIN_TEST_USER, ADMIN_TEST_PASS), AuthResponseDTO.class).getBody();
 
         String token = auth.token();
 

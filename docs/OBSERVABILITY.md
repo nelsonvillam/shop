@@ -81,6 +81,59 @@ curl http://localhost:8081/actuator/metrics/http.server.requests
 curl http://localhost:8081/actuator/metrics/jvm.memory.used
 ```
 
+### Custom metrics
+
+Beyond the built-in metrics, you can register your own using Micrometer's API. The shop application includes a custom counter that tracks how many orders have been successfully placed.
+
+**Implementation in `OrderService`:**
+
+```java
+private final Counter ordersPlacedCounter;
+
+public OrderService(..., MeterRegistry meterRegistry) {
+    this.ordersPlacedCounter = Counter.builder("shop.orders.placed")
+            .description("Total number of orders successfully placed")
+            .register(meterRegistry);
+}
+```
+
+The counter is incremented only when `placeOrder` fully succeeds — failed orders (insufficient stock, customer not found) do not count.
+
+```java
+ordersPlacedCounter.increment();
+```
+
+**Query it via Actuator:**
+
+```bash
+curl http://localhost:8081/actuator/metrics/shop.orders.placed
+```
+
+**In Prometheus format** (`/actuator/prometheus`):
+
+```
+shop_orders_placed_total{application="shop"} 3.0
+```
+
+**Micrometer metric types:**
+
+| Type | Use case | Example |
+|---|---|---|
+| `Counter` | Things that only go up | Orders placed, errors thrown |
+| `Gauge` | Current value that goes up and down | Active connections, queue size |
+| `Timer` | Latency of an operation | External API call duration |
+| `DistributionSummary` | Distribution of a value | Request payload size |
+
+**Testing custom metrics:**
+
+In unit tests, use `SimpleMeterRegistry` — an in-memory registry that works without any infrastructure:
+
+```java
+orderService = new OrderService(..., new SimpleMeterRegistry());
+```
+
+---
+
 ### Configuration
 
 Metrics are configured in `application.properties`:
@@ -158,3 +211,4 @@ In Grafana, add Prometheus as a data source (`http://prometheus:9090`) and impor
 | Health check | Spring Boot Actuator | `GET /actuator/health` |
 | Metrics browser | Spring Boot Actuator | `GET /actuator/metrics` |
 | Prometheus scrape | Micrometer + Prometheus registry | `GET /actuator/prometheus` |
+| Custom metric | Micrometer Counter | `GET /actuator/metrics/shop.orders.placed` |

@@ -180,12 +180,12 @@ class OrderControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void createOrder_withInvalidCustomer_returns500() {
+    void createOrder_withInvalidCustomer_returns404() {
         ResponseEntity<Void> response = restTemplate.postForEntity(
                 "/api/orders", buildRequest("000000000000000000000000", List.of(productId1)),
                 Void.class);
 
-        assertThat(response.getStatusCode().is5xxServerError()).isTrue();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     // -------------------------------------------------------------------------
@@ -227,7 +227,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void placeOrder_withZeroStock_returns500AndDoesNotCreateOrder() {
+    void placeOrder_withZeroStock_returns409AndDoesNotCreateOrder() {
         // Create a product with no stock
         ProductRequestDTO outOfStock = new ProductRequestDTO();
         outOfStock.setName("SoldOut"); outOfStock.setDescription("d"); outOfStock.setPrice(9.99); outOfStock.setStock(0);
@@ -240,7 +240,7 @@ class OrderControllerIT extends AbstractIntegrationTest {
                 buildRequest(customerId, List.of(outOfStockId)),
                 Void.class);
 
-        assertThat(response.getStatusCode().is5xxServerError()).isTrue();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(orderRepository.count()).isEqualTo(ordersBefore);
     }
 }

@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -51,12 +50,8 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "Login and receive a JWT token")
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody AuthRequestDTO dto) {
-        try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(dto.username(), dto.password()));
-        } catch (BadCredentialsException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(dto.username(), dto.password()));
         return ResponseEntity.ok(
                 new AuthResponseDTO(jwtUtil.generateToken(
                         userDetailsService.loadUserByUsername(dto.username()))));

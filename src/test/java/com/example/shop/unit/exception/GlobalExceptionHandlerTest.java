@@ -5,6 +5,7 @@ import com.example.shop.dto.ValidationErrorResponse;
 import com.example.shop.exception.GlobalExceptionHandler;
 import com.example.shop.exception.InsufficientStockException;
 import com.example.shop.exception.ResourceNotFoundException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,5 +69,28 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().fieldErrors()).containsEntry("name", "must not be blank");
         assertThat(response.getBody().fieldErrors()).containsEntry("price", "must be greater than 0");
         assertThat(response.getBody().timestamp()).isNotNull();
+    }
+
+    @Test
+    void handleValidation_withDuplicateField_keepsFirstMessage() throws NoSuchMethodException {
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "target");
+        bindingResult.addError(new FieldError("target", "name", "first message"));
+        bindingResult.addError(new FieldError("target", "name", "second message"));
+
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null, bindingResult);
+
+        ResponseEntity<ValidationErrorResponse> response = handler.handleValidation(ex);
+
+        assertThat(response.getBody().fieldErrors()).containsEntry("name", "first message");
+    }
+
+    @Test
+    void handleBadCredentials_returns401() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleBadCredentials(new BadCredentialsException("Bad credentials"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody().status()).isEqualTo(401);
+        assertThat(response.getBody().error()).isEqualTo("Unauthorized");
     }
 }

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- Test method names use underscore-separated segments (methodName_condition_expectation) -->
+    <suppress checks="MethodName" files=".*Test\.java"/>
+    <suppress checks="MethodName" files=".*IT\.java"/>
+
+    <!-- Testcontainers singleton fields use camelCase by convention (not screaming-snake-case) -->
+    <suppress checks="ConstantName" files="AbstractIntegrationTest\.java"/>
+
+    <!-- Proxy strategy uses compact try blocks and camelCase internal constant -->
+    <suppress checks="ConstantName"        files="DockerApiVersionProxyStrategy\.java"/>
+    <suppress checks="LeftCurly"           files="DockerApiVersionProxyStrategy\.java"/>
+    <suppress checks="OneStatementPerLine" files="DockerApiVersionProxyStrategy\.java"/>
+
+    <!-- OrderControllerIT uses inline ObjectId construction on a single logical line -->
+    <suppress checks="OneStatementPerLine" files="OrderControllerIT\.java"/>
+</suppressions>

@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,29 +50,35 @@ public class CustomerController {
 
     @TrackCall
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new customer")
     @ApiResponse(responseCode = "201", description = "Customer created")
     @ApiResponse(responseCode = "400", description = "Validation error")
+    @ApiResponse(responseCode = "403", description = "Admin access required")
     public CustomerResponseDTO create(@Valid @RequestBody CustomerRequestDTO dto) {
         return customerService.create(dto);
     }
 
     @TrackCall
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update an existing customer")
     @ApiResponse(responseCode = "404", description = "Customer not found")
     @ApiResponse(responseCode = "400", description = "Validation error")
+    @ApiResponse(responseCode = "403", description = "Admin access required")
     public CustomerResponseDTO update(@PathVariable String id, @Valid @RequestBody CustomerRequestDTO dto) {
         return customerService.update(id, dto);
     }
 
     @TrackCall
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete a customer")
     @ApiResponse(responseCode = "204", description = "Customer deleted")
     @ApiResponse(responseCode = "404", description = "Customer not found")
+    @ApiResponse(responseCode = "403", description = "Admin access required")
     public void delete(@PathVariable String id) {
         customerService.delete(id);
     }

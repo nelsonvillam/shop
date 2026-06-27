@@ -16,6 +16,7 @@ import org.testcontainers.containers.MongoDBContainer;
 
 import java.util.ArrayList;
 
+@SuppressWarnings("PMD.AbstractClassWithoutAbstractMethod")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class AbstractIntegrationTest {
 
@@ -45,12 +46,13 @@ public abstract class AbstractIntegrationTest {
 
     @BeforeEach
     void setUpAuth() {
-        // Register test user — 409 if already exists, which is fine
+        // Register test user — 409 if already exists, which is fine (used in AuthControllerIT tests)
         restTemplate.postForEntity("/auth/register",
                 new RegisterRequestDTO("testuser", "password123"), AuthResponseDTO.class);
 
+        // Admin user is seeded by DataLoader — authenticate as admin so all CRUD tests pass
         AuthResponseDTO auth = restTemplate.postForEntity("/auth/login",
-                new AuthRequestDTO("testuser", "password123"), AuthResponseDTO.class).getBody();
+                new AuthRequestDTO("admin", "admin123"), AuthResponseDTO.class).getBody();
 
         String token = auth.token();
 

@@ -4,14 +4,18 @@ import com.example.shop.model.Address;
 import com.example.shop.model.Customer;
 import com.example.shop.model.Order;
 import com.example.shop.model.Product;
+import com.example.shop.model.Role;
+import com.example.shop.model.User;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import com.example.shop.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -25,9 +29,20 @@ public class DataLoader implements ApplicationRunner {
     private final CustomerRepository customerRepository;
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(ApplicationArguments args) {
+        if (userRepository.findByUsername("admin").isEmpty()) {
+            User admin = new User();
+            admin.setUsername("admin");
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setRole(Role.ROLE_ADMIN);
+            userRepository.save(admin);
+            log.info("Seeded admin user");
+        }
+
         if (customerRepository.count() > 0) {
             log.info("Database already seeded — skipping DataLoader");
             return;

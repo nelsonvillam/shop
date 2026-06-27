@@ -6,6 +6,7 @@ import com.example.shop.exception.GlobalExceptionHandler;
 import com.example.shop.exception.InsufficientStockException;
 import com.example.shop.exception.RefreshTokenException;
 import com.example.shop.exception.ResourceNotFoundException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -93,6 +94,17 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody().status()).isEqualTo(401);
         assertThat(response.getBody().message()).isEqualTo("Refresh token expired");
+    }
+
+    @Test
+    void handleAccessDenied_returns403() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleAccessDenied(new AccessDeniedException("Access is denied"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody().status()).isEqualTo(403);
+        assertThat(response.getBody().error()).isEqualTo("Forbidden");
+        assertThat(response.getBody().message()).isEqualTo("Access is denied");
     }
 
     @Test

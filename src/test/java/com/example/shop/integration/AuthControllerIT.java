@@ -4,6 +4,7 @@ import com.example.shop.dto.AuthRequestDTO;
 import com.example.shop.dto.AuthResponseDTO;
 import com.example.shop.dto.RefreshRequestDTO;
 import com.example.shop.dto.RegisterRequestDTO;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -91,6 +92,21 @@ class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @SuppressWarnings("PMD.JUnitTestsShouldIncludeAssert")
+    void adminEndpoint_asUser_returns403() {
+        String userToken = restTemplate.postForEntity("/auth/login",
+                new AuthRequestDTO("testuser", "password123"), AuthResponseDTO.class)
+                .getBody().token();
+
+        withInterceptors(bearerHeader(userToken), () -> {
+            ResponseEntity<Void> response = restTemplate.postForEntity("/api/products",
+                    Map.of("name", "Test", "price", 10.0, "stock", 5), Void.class);
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        });
+    }
+
+    @Test
+    @SuppressWarnings("PMD.JUnitTestsShouldIncludeAssert")
     void protectedEndpoint_withoutToken_returns401() {
         withInterceptors(List.of(), () -> {
             ResponseEntity<Void> response = restTemplate.getForEntity("/api/products", Void.class);
@@ -99,6 +115,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @SuppressWarnings("PMD.JUnitTestsShouldIncludeAssert")
     void protectedEndpoint_withMalformedToken_returns401() {
         withInterceptors(bearerHeader("not.a.valid.jwt"), () -> {
             ResponseEntity<Void> response = restTemplate.getForEntity("/api/products", Void.class);

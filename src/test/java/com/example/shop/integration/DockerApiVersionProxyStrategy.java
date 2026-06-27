@@ -1,5 +1,7 @@
 package com.example.shop.integration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.dockerclient.DockerClientProviderStrategy;
 import org.testcontainers.dockerclient.InvalidConfigurationException;
 import org.testcontainers.dockerclient.TransportConfig;
@@ -24,6 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Testcontainers 1.21.x still sends /v1.32/ requests, causing 400 responses.
  */
 public class DockerApiVersionProxyStrategy extends DockerClientProviderStrategy {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DockerApiVersionProxyStrategy.class);
 
     static final String PROXY_SOCKET_PATH = "/tmp/docker-tc-proxy.sock";
     static final String REAL_SOCKET_PATH = "/var/run/docker.sock";
@@ -58,7 +62,7 @@ public class DockerApiVersionProxyStrategy extends DockerClientProviderStrategy 
                 }
             } catch (IOException e) {
                 if (!Thread.currentThread().isInterrupted()) {
-                    System.err.println("[DockerProxy] Server error: " + e.getMessage());
+                    LOG.error("[DockerProxy] Server error: {}", e.getMessage());
                 }
             }
         }, "docker-proxy-server");

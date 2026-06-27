@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -73,6 +74,7 @@ public class OrderController {
 
     @TrackCall
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new order")
     @ApiResponse(responseCode = "201", description = "Order created")
@@ -99,6 +101,7 @@ public class OrderController {
 
     @TrackCall
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update order status",
                description = "Valid transitions: PENDING → CONFIRMED → SHIPPED → DELIVERED. CANCELLED is always allowed.")
     @ApiResponse(responseCode = "404", description = "Order not found")
@@ -111,6 +114,7 @@ public class OrderController {
 
     @TrackCall
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete an order")
     @ApiResponse(responseCode = "204", description = "Order deleted")

@@ -137,3 +137,4 @@ All documentation is in the [`docs/`](docs/) directory.
 | [DOCKER_CONCEPTS.md](docs/DOCKER_CONCEPTS.md) | Docker concepts used in this project |
 | [TESTCONTAINERS.md](docs/TESTCONTAINERS.md) | Testcontainers setup explained |
 | [CHECK_EXPLAINED.md](docs/CHECK_EXPLAINED.md) | Local pipeline script (check.sh) explained |
+.

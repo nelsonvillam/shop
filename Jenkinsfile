@@ -118,14 +118,18 @@ pipeline {
         stage('Deploy') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'shop/mongo-user',     variable: 'MONGO_USER'),
-                    string(credentialsId: 'shop/mongo-password', variable: 'MONGO_PASSWORD')
+                    string(credentialsId: 'shop/mongo-user',         variable: 'MONGO_USER'),
+                    string(credentialsId: 'shop/mongo-password',     variable: 'MONGO_PASSWORD'),
+                    sshUserPrivateKey(credentialsId: 'ec2-ssh-key',  keyFileVariable: 'EC2_KEY')
                 ]) {
                     sh """
                         docker stop shop || true
                         docker rm shop || true
                         docker compose down --remove-orphans || true
                         docker compose up -d
+
+                        ssh -o StrictHostKeyChecking=no -i \$EC2_KEY ubuntu@15.228.216.109 \
+                            'cd ~/shop && docker-compose pull shop && docker-compose up -d'
                     """
                 }
             }

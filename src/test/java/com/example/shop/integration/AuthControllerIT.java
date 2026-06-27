@@ -2,6 +2,7 @@ package com.example.shop.integration;
 
 import com.example.shop.dto.AuthRequestDTO;
 import com.example.shop.dto.AuthResponseDTO;
+import com.example.shop.dto.RefreshRequestDTO;
 import com.example.shop.dto.RegisterRequestDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,18 +22,18 @@ class AuthControllerIT extends AbstractIntegrationTest {
     private TestRestTemplate restTemplate;
 
     @Test
-    void register_withNewUsername_returns201AndToken() {
+    void register_withNewUsername_returns201AndTokenPair() {
         ResponseEntity<AuthResponseDTO> response = restTemplate.postForEntity("/auth/register",
                 new RegisterRequestDTO("newuser_" + System.currentTimeMillis(), "password123"),
                 AuthResponseDTO.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().token()).isNotBlank();
+        assertThat(response.getBody().refreshToken()).isNotBlank();
     }
 
     @Test
     void register_withExistingUsername_returns409() {
-        // "testuser" already registered by AbstractIntegrationTest.setUpAuth()
         ResponseEntity<Void> response = restTemplate.postForEntity("/auth/register",
                 new RegisterRequestDTO("testuser", "password123"), Void.class);
 
@@ -40,12 +41,13 @@ class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void login_withValidCredentials_returns200AndToken() {
+    void login_withValidCredentials_returns200AndTokenPair() {
         ResponseEntity<AuthResponseDTO> response = restTemplate.postForEntity("/auth/login",
                 new AuthRequestDTO("testuser", "password123"), AuthResponseDTO.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().token()).isNotBlank();
+        assertThat(response.getBody().refreshToken()).isNotBlank();
     }
 
     @Test
@@ -54,6 +56,38 @@ class AuthControllerIT extends AbstractIntegrationTest {
                 new AuthRequestDTO("testuser", "wrongpassword"), Void.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void refresh_withValidToken_returnsNewTokenPair() {
+        String oldRefresh = loginAndGetRefreshToken();
+
+        ResponseEntity<AuthResponseDTO> response = restTemplate.postForEntity("/auth/refresh",
+                new RefreshRequestDTO(oldRefresh), AuthResponseDTO.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().token()).isNotBlank();
+        assertThat(response.getBody().refreshToken()).isNotBlank();
+        assertThat(response.getBody().refreshToken()).isNotEqualTo(oldRefresh);
+    }
+
+    @Test
+    void refresh_withInvalidToken_returns401() {
+        ResponseEntity<Void> response = restTemplate.postForEntity("/auth/refresh",
+                new RefreshRequestDTO("not-a-real-token"), Void.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void logout_revokesRefreshToken() {
+        String refreshToken = loginAndGetRefreshToken();
+
+        restTemplate.postForEntity("/auth/logout", new RefreshRequestDTO(refreshToken), Void.class);
+
+        ResponseEntity<Void> retryRefresh = restTemplate.postForEntity("/auth/refresh",
+                new RefreshRequestDTO(refreshToken), Void.class);
+        assertThat(retryRefresh.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -70,6 +104,12 @@ class AuthControllerIT extends AbstractIntegrationTest {
             ResponseEntity<Void> response = restTemplate.getForEntity("/api/products", Void.class);
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         });
+    }
+
+    private String loginAndGetRefreshToken() {
+        return restTemplate.postForEntity("/auth/login",
+                new AuthRequestDTO("testuser", "password123"), AuthResponseDTO.class)
+                .getBody().refreshToken();
     }
 
     private List<ClientHttpRequestInterceptor> bearerHeader(String token) {

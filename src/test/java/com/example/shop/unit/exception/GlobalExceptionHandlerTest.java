@@ -4,6 +4,7 @@ import com.example.shop.dto.ErrorResponse;
 import com.example.shop.dto.ValidationErrorResponse;
 import com.example.shop.exception.GlobalExceptionHandler;
 import com.example.shop.exception.InsufficientStockException;
+import com.example.shop.exception.RefreshTokenException;
 import com.example.shop.exception.ResourceNotFoundException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,16 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ValidationErrorResponse> response = handler.handleValidation(ex);
 
         assertThat(response.getBody().fieldErrors()).containsEntry("name", "first message");
+    }
+
+    @Test
+    void handleRefreshToken_returns401() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleRefreshToken(new RefreshTokenException("Refresh token expired"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody().status()).isEqualTo(401);
+        assertThat(response.getBody().message()).isEqualTo("Refresh token expired");
     }
 
     @Test

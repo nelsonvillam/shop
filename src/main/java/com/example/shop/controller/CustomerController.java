@@ -2,6 +2,7 @@ package com.example.shop.controller;
 
 import com.example.shop.dto.CustomerRequestDTO;
 import com.example.shop.dto.CustomerResponseDTO;
+import com.example.shop.metrics.TrackCall;
 import com.example.shop.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,12 +32,14 @@ public class CustomerController {
 
     private final CustomerService customerService;
 
+    @TrackCall
     @GetMapping
     @Operation(summary = "List all customers")
     public List<CustomerResponseDTO> findAll() {
         return customerService.findAll();
     }
 
+    @TrackCall
     @GetMapping("/{id}")
     @Operation(summary = "Get customer by ID")
     @ApiResponse(responseCode = "404", description = "Customer not found")
@@ -44,6 +47,7 @@ public class CustomerController {
         return customerService.findById(id);
     }
 
+    @TrackCall
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new customer")
@@ -53,6 +57,7 @@ public class CustomerController {
         return customerService.create(dto);
     }
 
+    @TrackCall
     @PutMapping("/{id}")
     @Operation(summary = "Update an existing customer")
     @ApiResponse(responseCode = "404", description = "Customer not found")
@@ -61,6 +66,7 @@ public class CustomerController {
         return customerService.update(id, dto);
     }
 
+    @TrackCall
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete a customer")
@@ -70,6 +76,7 @@ public class CustomerController {
         customerService.delete(id);
     }
 
+    @TrackCall
     @GetMapping("/search/address")
     @Operation(summary = "Search customers by address keyword")
     public List<CustomerResponseDTO> findByAddress(
@@ -78,6 +85,7 @@ public class CustomerController {
         return customerService.findByAddress(keyword);
     }
 
+    @TrackCall
     @GetMapping("/search/name")
     @Operation(summary = "Search customers by name keyword")
     public List<CustomerResponseDTO> findByName(

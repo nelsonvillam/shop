@@ -2,6 +2,7 @@ package com.example.shop.controller;
 
 import com.example.shop.dto.ProductRequestDTO;
 import com.example.shop.dto.ProductResponseDTO;
+import com.example.shop.metrics.TrackCall;
 import com.example.shop.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,6 +33,7 @@ public class ProductController {
 
     private final ProductService productService;
 
+    @TrackCall
     @GetMapping
     @Operation(summary = "List all products", description = "Returns all products, or filters by name/description when ?search is provided")
     public List<ProductResponseDTO> findAll(
@@ -43,6 +45,7 @@ public class ProductController {
         return productService.findAll();
     }
 
+    @TrackCall
     @GetMapping("/page")
     @Operation(
         summary = "List products with pagination and sorting",
@@ -56,6 +59,7 @@ public class ProductController {
         return productService.findPaged(page, size, sortBy, sortDir);
     }
 
+    @TrackCall
     @GetMapping("/{id}")
     @Operation(summary = "Get product by ID")
     @ApiResponse(responseCode = "404", description = "Product not found")
@@ -63,6 +67,7 @@ public class ProductController {
         return productService.findById(id);
     }
 
+    @TrackCall
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new product")
@@ -72,6 +77,7 @@ public class ProductController {
         return productService.create(dto);
     }
 
+    @TrackCall
     @PutMapping("/{id}")
     @Operation(summary = "Update an existing product")
     @ApiResponse(responseCode = "404", description = "Product not found")
@@ -80,6 +86,7 @@ public class ProductController {
         return productService.update(id, dto);
     }
 
+    @TrackCall
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete a product")

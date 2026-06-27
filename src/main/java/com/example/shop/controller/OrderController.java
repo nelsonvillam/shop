@@ -3,6 +3,7 @@ package com.example.shop.controller;
 import com.example.shop.dto.OrderDetailResponseDTO;
 import com.example.shop.dto.OrderRequestDTO;
 import com.example.shop.dto.OrderResponseDTO;
+import com.example.shop.metrics.TrackCall;
 import com.example.shop.model.Order;
 import com.example.shop.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,24 +34,28 @@ public class OrderController {
 
     private final OrderService orderService;
 
+    @TrackCall
     @GetMapping
     @Operation(summary = "List all orders")
     public List<OrderResponseDTO> findAll() {
         return orderService.findAll();
     }
 
+    @TrackCall
     @GetMapping("/customer/{customerId}")
     @Operation(summary = "List orders by customer")
     public List<OrderResponseDTO> findByCustomer(@PathVariable String customerId) {
         return orderService.findByCustomer(customerId);
     }
 
+    @TrackCall
     @GetMapping("/product/{productId}")
     @Operation(summary = "List orders that contain a specific product")
     public List<OrderResponseDTO> findByProduct(@PathVariable String productId) {
         return orderService.findByProduct(productId);
     }
 
+    @TrackCall
     @GetMapping("/{id}")
     @Operation(summary = "Get order by ID")
     @ApiResponse(responseCode = "404", description = "Order not found")
@@ -58,6 +63,7 @@ public class OrderController {
         return orderService.findById(id);
     }
 
+    @TrackCall
     @GetMapping("/{id}/detail")
     @Operation(summary = "Get order with full customer and product details")
     @ApiResponse(responseCode = "404", description = "Order not found")
@@ -65,6 +71,7 @@ public class OrderController {
         return orderService.findDetailById(id);
     }
 
+    @TrackCall
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new order")
@@ -74,6 +81,7 @@ public class OrderController {
         return orderService.create(dto);
     }
 
+    @TrackCall
     @PostMapping("/place")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
@@ -89,6 +97,7 @@ public class OrderController {
         return orderService.placeOrder(dto, simulateFail);
     }
 
+    @TrackCall
     @PatchMapping("/{id}/status")
     @Operation(summary = "Update order status",
                description = "Valid transitions: PENDING → CONFIRMED → SHIPPED → DELIVERED. CANCELLED is always allowed.")
@@ -100,6 +109,7 @@ public class OrderController {
         return orderService.updateStatus(id, status);
     }
 
+    @TrackCall
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete an order")

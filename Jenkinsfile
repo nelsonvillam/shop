@@ -120,7 +120,7 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'shop/mongo-user',         variable: 'MONGO_USER'),
                     string(credentialsId: 'shop/mongo-password',     variable: 'MONGO_PASSWORD'),
-                    sshUserPrivateKey(credentialsId: 'ec2-ssh-key',  keyFileVariable: 'EC2_KEY')
+                    file(credentialsId: 'ec2-ssh-key', variable: 'EC2_KEY')
                 ]) {
                     sh """
                         docker stop shop || true

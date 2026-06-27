@@ -2,10 +2,11 @@ package com.example.shop.service;
 
 import com.example.shop.dto.ProductRequestDTO;
 import com.example.shop.dto.ProductResponseDTO;
+import com.example.shop.exception.ResourceNotFoundException;
 import com.example.shop.mapper.ProductMapper;
 import com.example.shop.repository.ProductRepository;
-import com.example.shop.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductService {
@@ -37,7 +39,10 @@ public class ProductService {
     public ProductResponseDTO findById(String id) {
         return productRepository.findById(id)
                 .map(productMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + id));
+                .orElseThrow(() -> {
+                    log.warn("Product not found: {}", id);
+                    return new ResourceNotFoundException("Product not found: " + id);
+                });
     }
 
     public List<ProductResponseDTO> search(String name) {
@@ -56,19 +61,27 @@ public class ProductService {
 
     @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO create(ProductRequestDTO dto) {
-        return productMapper.toResponse(productRepository.save(productMapper.toEntity(dto)));
+        ProductResponseDTO created = productMapper.toResponse(productRepository.save(productMapper.toEntity(dto)));
+        log.info("Product created: id={} name={}", created.getId(), created.getName());
+        return created;
     }
 
     @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO update(String id, ProductRequestDTO dto) {
         var existing = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + id));
+                .orElseThrow(() -> {
+                    log.warn("Product not found for update: {}", id);
+                    return new ResourceNotFoundException("Product not found: " + id);
+                });
         productMapper.updateEntity(dto, existing);
-        return productMapper.toResponse(productRepository.save(existing));
+        ProductResponseDTO updated = productMapper.toResponse(productRepository.save(existing));
+        log.info("Product updated: id={}", id);
+        return updated;
     }
 
     @CacheEvict(value = "products", allEntries = true)
     public void delete(String id) {
         productRepository.deleteById(id);
+        log.info("Product deleted: id={}", id);
     }
 }

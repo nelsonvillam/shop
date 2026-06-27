@@ -3,6 +3,7 @@ package com.example.shop.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 
 @Data
@@ -20,6 +21,7 @@ public class ProductRequestDTO {
     @Schema(description = "Price in USD", example = "1299.99")
     private double price;
 
+    @PositiveOrZero
     @Schema(description = "Units available in stock", example = "10")
     private int stock;
 }

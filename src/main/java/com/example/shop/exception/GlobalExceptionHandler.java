@@ -1,15 +1,30 @@
 package com.example.shop.exception;
 
 import com.example.shop.dto.ErrorResponse;
+import com.example.shop.dto.ValidationErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ValidationErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+                .collect(Collectors.toMap(
+                        fe -> fe.getField(),
+                        fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "invalid",
+                        (first, second) -> first));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ValidationErrorResponse(400, "Bad Request", fieldErrors, Instant.now()));
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {

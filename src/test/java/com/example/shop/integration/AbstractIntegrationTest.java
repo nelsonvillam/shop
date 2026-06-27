@@ -45,6 +45,7 @@ public abstract class AbstractIntegrationTest {
     }
 
     @BeforeEach
+    @SuppressWarnings("java:S2068")
     void setUpAuth() {
         // Register test user — 409 if already exists, which is fine (used in AuthControllerIT tests)
         restTemplate.postForEntity("/auth/register",

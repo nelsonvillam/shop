@@ -92,7 +92,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    @SuppressWarnings("PMD.JUnitTestsShouldIncludeAssert")
+    @SuppressWarnings({"PMD.JUnitTestsShouldIncludeAssert", "java:S2068"})
     void adminEndpoint_asUser_returns403() {
         String userToken = restTemplate.postForEntity("/auth/login",
                 new AuthRequestDTO("testuser", "password123"), AuthResponseDTO.class)

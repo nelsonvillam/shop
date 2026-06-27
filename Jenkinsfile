@@ -117,22 +117,17 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sh """
-                    MONGO_USER=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/mongo-user \
-                        --query SecretString \
-                        --output text)
-
-                    MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/mongo-password \
-                        --query SecretString \
-                        --output text)
-
-                    docker stop shop || true
-                    docker rm shop || true
-                    MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose down --remove-orphans || true
-                    MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose up -d
-                """
+                withCredentials([
+                    string(credentialsId: 'shop/mongo-user',     variable: 'MONGO_USER'),
+                    string(credentialsId: 'shop/mongo-password', variable: 'MONGO_PASSWORD')
+                ]) {
+                    sh """
+                        docker stop shop || true
+                        docker rm shop || true
+                        docker compose down --remove-orphans || true
+                        docker compose up -d
+                    """
+                }
             }
         }
     }

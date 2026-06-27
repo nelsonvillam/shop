@@ -10,6 +10,8 @@ import com.example.shop.model.Product;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import com.example.shop.exception.InsufficientStockException;
+import com.example.shop.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -44,7 +46,7 @@ public class OrderService {
     public OrderResponseDTO findById(String id) {
         return orderRepository.findById(id)
                 .map(orderMapper::toResponse)
-                .orElseThrow(() -> new RuntimeException("Order not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
     }
 
     public List<OrderResponseDTO> findByCustomer(String customerId) {
@@ -61,12 +63,12 @@ public class OrderService {
 
     public OrderResponseDTO create(OrderRequestDTO dto) {
         if (!customerRepository.existsById(dto.getCustomerId())) {
-            throw new RuntimeException("Customer not found: " + dto.getCustomerId());
+            throw new ResourceNotFoundException("Customer not found: " + dto.getCustomerId());
         }
 
         List<Product> products = productRepository.findAllById(dto.getProductIds());
         if (products.size() != dto.getProductIds().size()) {
-            throw new RuntimeException("One or more products not found");
+            throw new ResourceNotFoundException("One or more products not found");
         }
 
         Order order = orderMapper.toEntity(dto);
@@ -77,7 +79,7 @@ public class OrderService {
 
     public OrderResponseDTO updateStatus(String id, Order.OrderStatus status) {
         Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
         order.setStatus(status);
         return orderMapper.toResponse(orderRepository.save(order));
     }
@@ -89,17 +91,17 @@ public class OrderService {
     @Transactional
     public OrderResponseDTO placeOrder(OrderRequestDTO dto, boolean simulateFail) {
         if (!customerRepository.existsById(dto.getCustomerId())) {
-            throw new RuntimeException("Customer not found: " + dto.getCustomerId());
+            throw new ResourceNotFoundException("Customer not found: " + dto.getCustomerId());
         }
 
         List<Product> products = productRepository.findAllById(dto.getProductIds());
         if (products.size() != dto.getProductIds().size()) {
-            throw new RuntimeException("One or more products not found");
+            throw new ResourceNotFoundException("One or more products not found");
         }
 
         for (Product product : products) {
             if (product.getStock() < 1) {
-                throw new RuntimeException("Insufficient stock for product: " + product.getName());
+                throw new InsufficientStockException("Insufficient stock for product: " + product.getName());
             }
             product.setStock(product.getStock() - 1);
             productRepository.save(product);

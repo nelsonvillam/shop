@@ -10,6 +10,8 @@ import com.example.shop.model.Product;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import com.example.shop.exception.InsufficientStockException;
+import com.example.shop.exception.ResourceNotFoundException;
 import com.example.shop.service.OrderService;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +96,7 @@ class OrderServiceTest {
         when(orderRepository.findById("bad-id")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.findById("bad-id"))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("bad-id");
     }
 
@@ -118,7 +120,7 @@ class OrderServiceTest {
         when(customerRepository.existsById(customerId.toHexString())).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.create(requestDTO))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Customer not found");
     }
 
@@ -128,7 +130,7 @@ class OrderServiceTest {
         when(productRepository.findAllById(any())).thenReturn(List.of());
 
         assertThatThrownBy(() -> orderService.create(requestDTO))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("products not found");
     }
 
@@ -155,7 +157,7 @@ class OrderServiceTest {
         when(customerRepository.existsById(customerId.toHexString())).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.placeOrder(requestDTO, false))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Customer not found");
     }
 
@@ -165,7 +167,7 @@ class OrderServiceTest {
         when(productRepository.findAllById(any())).thenReturn(List.of());
 
         assertThatThrownBy(() -> orderService.placeOrder(requestDTO, false))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("products not found");
     }
 

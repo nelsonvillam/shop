@@ -4,6 +4,7 @@ import com.example.shop.dto.ProductRequestDTO;
 import com.example.shop.dto.ProductResponseDTO;
 import com.example.shop.mapper.ProductMapper;
 import com.example.shop.repository.ProductRepository;
+import com.example.shop.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -36,7 +37,7 @@ public class ProductService {
     public ProductResponseDTO findById(String id) {
         return productRepository.findById(id)
                 .map(productMapper::toResponse)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + id));
     }
 
     public List<ProductResponseDTO> search(String name) {
@@ -61,7 +62,7 @@ public class ProductService {
     @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO update(String id, ProductRequestDTO dto) {
         var existing = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + id));
         productMapper.updateEntity(dto, existing);
         return productMapper.toResponse(productRepository.save(existing));
     }

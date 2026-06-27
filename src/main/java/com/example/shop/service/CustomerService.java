@@ -4,6 +4,7 @@ import com.example.shop.dto.CustomerRequestDTO;
 import com.example.shop.dto.CustomerResponseDTO;
 import com.example.shop.mapper.CustomerMapper;
 import com.example.shop.repository.CustomerRepository;
+import com.example.shop.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,7 +26,7 @@ public class CustomerService {
     public CustomerResponseDTO findById(String id) {
         return customerRepository.findById(id)
                 .map(customerMapper::toResponse)
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + id));
     }
 
     public CustomerResponseDTO create(CustomerRequestDTO dto) {
@@ -34,7 +35,7 @@ public class CustomerService {
 
     public CustomerResponseDTO update(String id, CustomerRequestDTO dto) {
         var existing = customerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Customer not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + id));
         customerMapper.updateEntity(dto, existing);
         return customerMapper.toResponse(customerRepository.save(existing));
     }

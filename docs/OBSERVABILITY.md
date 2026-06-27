@@ -134,6 +134,89 @@ orderService = new OrderService(..., new SimpleMeterRegistry());
 
 ---
 
+### Declarative metrics with `@TrackCall`
+
+The shop application also uses a custom annotation backed by Spring AOP to count endpoint calls without touching controller logic.
+
+**How it works:**
+
+1. `@TrackCall` is a marker annotation (`@Retention(RUNTIME)`) placed on controller methods.
+2. `MetricsAspect` is an `@Aspect` component that intercepts every method annotated with `@TrackCall`.
+3. Before delegating to the real method, the aspect increments a counter tagged with the controller class and method name.
+
+**The annotation** (`metrics/TrackCall.java`):
+
+```java
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface TrackCall {
+}
+```
+
+**The aspect** (`metrics/MetricsAspect.java`):
+
+```java
+@Aspect
+@Component
+@RequiredArgsConstructor
+public class MetricsAspect {
+
+    private final MeterRegistry meterRegistry;
+
+    @Around("@annotation(TrackCall)")
+    public Object track(ProceedingJoinPoint pjp) throws Throwable {
+        String className  = pjp.getTarget().getClass().getSimpleName();
+        String methodName = pjp.getSignature().getName();
+
+        meterRegistry.counter("shop.api.calls",
+                "class",  className,
+                "method", methodName)
+                .increment();
+
+        return pjp.proceed();
+    }
+}
+```
+
+**Usage on a controller method:**
+
+```java
+@TrackCall
+@GetMapping
+public List<ProductResponseDTO> findAll(...) { ... }
+```
+
+All controller methods across `ProductController`, `CustomerController`, and `OrderController` are annotated.
+
+**In Prometheus format** (`/actuator/prometheus`):
+
+```
+shop_api_calls_total{application="shop",class="ProductController",method="findAll"} 12.0
+shop_api_calls_total{application="shop",class="OrderController",method="place"} 3.0
+```
+
+**Useful PromQL queries:**
+
+```promql
+# total calls across all endpoints
+sum(shop_api_calls_total)
+
+# calls broken down per method, sorted by most called
+sort_desc(sum by (method) (shop_api_calls_total))
+
+# calls for a specific controller
+sum by (method) (shop_api_calls_total{class="OrderController"})
+```
+
+**`@TrackCall` vs manual counter — when to use each:**
+
+| Approach | Use when |
+|---|---|
+| `@TrackCall` (AOP) | You want to count every invocation, regardless of outcome. Zero coupling to the controller. |
+| Manual `Counter` in service | You want to count only successful outcomes (e.g. only orders that actually complete). |
+
+---
+
 ### Configuration
 
 Metrics are configured in `application.properties`:
@@ -212,3 +295,4 @@ In Grafana, add Prometheus as a data source (`http://prometheus:9090`) and impor
 | Metrics browser | Spring Boot Actuator | `GET /actuator/metrics` |
 | Prometheus scrape | Micrometer + Prometheus registry | `GET /actuator/prometheus` |
 | Custom metric | Micrometer Counter | `GET /actuator/metrics/shop.orders.placed` |
+| AOP endpoint counter | `@TrackCall` + Spring AOP | `GET /actuator/metrics/shop.api.calls` |

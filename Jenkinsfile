@@ -133,6 +133,7 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'shop/mongo-user',         variable: 'MONGO_USER'),
                     string(credentialsId: 'shop/mongo-password',     variable: 'MONGO_PASSWORD'),
+                    string(credentialsId: 'shop/admin-password',     variable: 'ADMIN_PASSWORD'),
                     file(credentialsId: 'ec2-ssh-key', variable: 'EC2_KEY')
                 ]) {
                     sh """

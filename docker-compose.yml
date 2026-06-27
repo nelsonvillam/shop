@@ -30,6 +30,7 @@ services:
       REDIS_PORT: 6379
       SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
       ZIPKIN_URL: http://zipkin:9411
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
       - mongo
       - redis

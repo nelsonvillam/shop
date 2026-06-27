@@ -332,41 +332,35 @@ Pushes both tags (`BUILD_NUMBER` and `latest`) to Docker Hub. Authentication use
 ```groovy
 stage('Deploy') {
     steps {
-        sh """
-            MONGO_USER=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/mongo-user \
-                --query SecretString \
-                --output text)
-
-            MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/mongo-password \
-                --query SecretString \
-                --output text)
-
-            docker stop shop || true
-            docker rm shop || true
-            MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose down --remove-orphans || true
-            MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose up -d
-        """
+        withCredentials([
+            string(credentialsId: 'shop/mongo-user',     variable: 'MONGO_USER'),
+            string(credentialsId: 'shop/mongo-password', variable: 'MONGO_PASSWORD')
+        ]) {
+            sh """
+                docker stop shop || true
+                docker rm shop || true
+                docker compose down --remove-orphans || true
+                docker compose up -d
+            """
+        }
     }
 }
 ```
 
 **When it runs:** after Docker Push completes. Skipped if any earlier stage failed.
 
-Credentials are fetched at deploy time from **AWS Secrets Manager** — they are never stored in Jenkins or in any file on disk.
+Credentials are fetched at deploy time from **AWS Secrets Manager** via the **AWS Secrets Manager Credentials Provider** Jenkins plugin. They are never stored in Jenkins and are automatically masked in build logs.
 
-- `aws secretsmanager get-secret-value --secret-id shop/mongo-user` — retrieves the MongoDB username stored under the secret name `shop/mongo-user`. `--query SecretString --output text` extracts the plain string value.
-- `aws secretsmanager get-secret-value --secret-id shop/mongo-password` — same for the password.
-- The fetched values are assigned to shell variables (`MONGO_USER`, `MONGO_PASSWORD`) and **only exist for the duration of this shell block** — they are never written to disk or logged.
+- `withCredentials` — fetches the secrets from AWS Secrets Manager using the credential IDs `shop/mongo-user` and `shop/mongo-password`, which map directly to the secret names in Secrets Manager. The values are exposed as environment variables (`MONGO_USER`, `MONGO_PASSWORD`) only within this block and are masked as `****` in the Jenkins console output.
 - `docker stop shop || true` — stops the running container named `shop` if it exists. `|| true` prevents the step from failing if the container isn't running.
 - `docker rm shop || true` — removes the stopped container.
-- `MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose down --remove-orphans || true` — passes the credentials as inline environment variables to docker compose, then tears down any remaining services.
-- `MONGO_USER=\$MONGO_USER MONGO_PASSWORD=\$MONGO_PASSWORD docker compose up -d` — starts the application in detached mode using the latest image, with the credentials injected from Secrets Manager.
+- `docker compose down --remove-orphans || true` — tears down any remaining compose services and removes containers not defined in the current `docker-compose.yml`.
+- `docker compose up -d` — starts the application in detached mode using the latest image. Docker Compose reads `MONGO_USER` and `MONGO_PASSWORD` from the environment automatically.
 
 **Prerequisites:**
-- AWS CLI installed on the Jenkins host (`sudo apt install -y awscli`)
-- The Jenkins host has an IAM role or IAM user credentials configured with `secretsmanager:GetSecretValue` permission on `arn:aws:secretsmanager:*:*:secret:shop/*`
+- **AWS Secrets Manager Credentials Provider** plugin installed in Jenkins (**Manage Jenkins → Plugins → Available plugins**)
+- AWS region configured in **Manage Jenkins → System → AWS Secrets Manager** (e.g. `sa-east-1`)
+- The Jenkins host has an IAM role or IAM user with `secretsmanager:GetSecretValue` permission on `arn:aws:secretsmanager:*:*:secret:shop/*`
 - Secrets created in AWS Secrets Manager:
   - `shop/mongo-user` — MongoDB username
   - `shop/mongo-password` — MongoDB password

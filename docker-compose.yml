@@ -13,6 +13,11 @@ services:
     volumes:
       - redis-data:/data
 
+  zipkin:
+    image: openzipkin/zipkin:3
+    ports:
+      - "9411:9411"
+
   shop:
     image: nelsonvillam/shop:latest
     ports:
@@ -24,9 +29,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
+      ZIPKIN_URL: http://zipkin:9411
     depends_on:
       - mongo
       - redis
+      - zipkin
 
 volumes:
   mongo-data:

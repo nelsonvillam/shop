@@ -14,6 +14,7 @@ import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -118,6 +119,7 @@ public class OrderService {
         log.info("Order deleted: id={}", id);
     }
 
+    @Observed(name = "order.place", contextualName = "place-order")
     @Transactional
     public OrderResponseDTO placeOrder(OrderRequestDTO dto, boolean simulateFail) {
         if (!customerRepository.existsById(dto.getCustomerId())) {

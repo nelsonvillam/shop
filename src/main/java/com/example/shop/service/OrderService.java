@@ -12,6 +12,8 @@ import com.example.shop.model.Product;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
@@ -30,7 +32,6 @@ import static org.springframework.data.mongodb.core.aggregation.Aggregation.unwi
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OrderService {
 
     private final OrderRepository orderRepository;
@@ -38,6 +39,23 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final MongoTemplate mongoTemplate;
     private final OrderMapper orderMapper;
+    private final Counter ordersPlacedCounter;
+
+    public OrderService(OrderRepository orderRepository,
+                        CustomerRepository customerRepository,
+                        ProductRepository productRepository,
+                        MongoTemplate mongoTemplate,
+                        OrderMapper orderMapper,
+                        MeterRegistry meterRegistry) {
+        this.orderRepository = orderRepository;
+        this.customerRepository = customerRepository;
+        this.productRepository = productRepository;
+        this.mongoTemplate = mongoTemplate;
+        this.orderMapper = orderMapper;
+        this.ordersPlacedCounter = Counter.builder("shop.orders.placed")
+                .description("Total number of orders successfully placed")
+                .register(meterRegistry);
+    }
 
     public List<OrderResponseDTO> findAll() {
         return orderRepository.findAll().stream()
@@ -132,6 +150,7 @@ public class OrderService {
         Order order = orderMapper.toEntity(dto);
         order.setTotal(products.stream().mapToDouble(Product::getPrice).sum());
         OrderResponseDTO placed = orderMapper.toResponse(orderRepository.save(order));
+        ordersPlacedCounter.increment();
         log.info("Order placed: id={} customerId={} total={}", placed.getId(), dto.getCustomerId(), placed.getTotal());
         return placed;
     }

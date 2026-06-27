@@ -13,11 +13,11 @@ import com.example.shop.repository.ProductRepository;
 import com.example.shop.exception.InsufficientStockException;
 import com.example.shop.exception.ResourceNotFoundException;
 import com.example.shop.service.OrderService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -43,7 +43,7 @@ class OrderServiceTest {
     @Mock private ProductRepository productRepository;
     @Mock private MongoTemplate mongoTemplate;
     @Mock private OrderMapper orderMapper;
-    @InjectMocks private OrderService orderService;
+    private OrderService orderService;
 
     private final ObjectId customerId = new ObjectId();
     private final ObjectId productId  = new ObjectId();
@@ -55,6 +55,9 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
+        orderService = new OrderService(orderRepository, customerRepository, productRepository,
+                mongoTemplate, orderMapper, new SimpleMeterRegistry());
+
         product  = new Product(productId.toHexString(), "Laptop", "desc", 999.99, 5);
 
         order = new Order();

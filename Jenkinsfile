@@ -32,6 +32,19 @@ pipeline {
             }
         }
 
+        stage('Compile Tests') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:21-jdk'
+                    reuseNode true
+                    args "-e HOME=${env.WORKSPACE}"
+                }
+            }
+            steps {
+                sh './gradlew compileTestJava --no-daemon'
+            }
+        }
+
         stage('Tests') {
             failFast true
             parallel {

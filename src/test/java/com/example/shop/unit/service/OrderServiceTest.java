@@ -10,7 +10,6 @@ import com.example.shop.model.Product;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
-import com.example.shop.exception.InsufficientStockException;
 import com.example.shop.exception.ResourceNotFoundException;
 import com.example.shop.service.OrderService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

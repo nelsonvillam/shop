@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -38,6 +39,22 @@ public class CustomerController {
     @Operation(summary = "List all customers")
     public List<CustomerResponseDTO> findAll() {
         return customerService.findAll();
+    }
+
+    @TrackCall
+    @GetMapping("/page")
+    @Operation(
+        summary = "List customers with pagination, sorting, and optional city filter",
+        description = "Sort fields: name, email. Sort direction: asc, desc."
+    )
+    public Page<CustomerResponseDTO> findPaged(
+            @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size")             @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Field to sort by")      @RequestParam(defaultValue = "name") String sortBy,
+            @Parameter(description = "Sort direction")        @RequestParam(defaultValue = "asc") String sortDir,
+            @Parameter(description = "Filter by city (case-insensitive, partial match)")
+            @RequestParam(required = false) String city) {
+        return customerService.findPaged(page, size, sortBy, sortDir, city);
     }
 
     @TrackCall

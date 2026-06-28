@@ -15,11 +15,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -131,5 +137,38 @@ class CustomerServiceTest {
         when(customerMapper.toResponse(customer)).thenReturn(responseDTO);
 
         assertThat(customerService.findByName("Alice")).containsExactly(responseDTO);
+    }
+
+    @Test
+    void findPaged_noCityFilter_returnsAllCustomersPage() {
+        Page<Customer> page = new PageImpl<>(List.of(customer));
+        when(customerRepository.findAll(any(Pageable.class))).thenReturn(page);
+        when(customerMapper.toResponse(customer)).thenReturn(responseDTO);
+
+        Page<CustomerResponseDTO> result = customerService.findPaged(0, 10, "name", "asc", null);
+
+        assertThat(result.getContent()).containsExactly(responseDTO);
+    }
+
+    @Test
+    void findPaged_withCityFilter_returnsFilteredPage() {
+        Page<Customer> page = new PageImpl<>(List.of(customer));
+        when(customerRepository.findByAddressCityContainingIgnoreCase(eq("London"), any(Pageable.class))).thenReturn(page);
+        when(customerMapper.toResponse(customer)).thenReturn(responseDTO);
+
+        Page<CustomerResponseDTO> result = customerService.findPaged(0, 10, "name", "asc", "London");
+
+        assertThat(result.getContent()).containsExactly(responseDTO);
+    }
+
+    @Test
+    void findPaged_descSort_returnsPageSortedDescending() {
+        Page<Customer> page = new PageImpl<>(List.of(customer));
+        when(customerRepository.findAll(any(Pageable.class))).thenReturn(page);
+        when(customerMapper.toResponse(customer)).thenReturn(responseDTO);
+
+        Page<CustomerResponseDTO> result = customerService.findPaged(0, 10, "name", "desc", null);
+
+        assertThat(result.getContent()).containsExactly(responseDTO);
     }
 }

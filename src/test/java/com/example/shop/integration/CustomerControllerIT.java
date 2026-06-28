@@ -4,6 +4,7 @@ import com.example.shop.dto.AddressDTO;
 import com.example.shop.dto.CustomerRequestDTO;
 import com.example.shop.dto.CustomerResponseDTO;
 import com.example.shop.repository.CustomerRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -138,5 +139,56 @@ class CustomerControllerIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);
         assertThat(response.getBody().get(0).getAddress().getCity()).isEqualTo("London");
+    }
+
+    // -------------------------------------------------------------------------
+    // Pagination tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    void findPaged_returnsCorrectPageSizeAndMetadata() {
+        restTemplate.postForEntity("/api/customers", buildRequest("Alice", "alice@test.com", "London"), CustomerResponseDTO.class);
+        restTemplate.postForEntity("/api/customers", buildRequest("Bob",   "bob@test.com",   "Paris"),  CustomerResponseDTO.class);
+        restTemplate.postForEntity("/api/customers", buildRequest("Carol", "carol@test.com", "London"), CustomerResponseDTO.class);
+
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                "/api/customers/page?page=0&size=2&sortBy=name&sortDir=asc",
+                HttpMethod.GET, null, JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = response.getBody();
+        assertThat(body.get("content").size()).isEqualTo(2);
+        assertThat(body.get("totalElements").asInt()).isEqualTo(3);
+        assertThat(body.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(body.get("first").asBoolean()).isTrue();
+        assertThat(body.get("last").asBoolean()).isFalse();
+    }
+
+    @Test
+    void findPaged_sortByNameDesc_returnsCustomersInDescendingOrder() {
+        restTemplate.postForEntity("/api/customers", buildRequest("Alice", "alice@test.com", "London"), CustomerResponseDTO.class);
+        restTemplate.postForEntity("/api/customers", buildRequest("Bob",   "bob@test.com",   "Paris"),  CustomerResponseDTO.class);
+
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                "/api/customers/page?sortBy=name&sortDir=desc",
+                HttpMethod.GET, null, JsonNode.class);
+
+        JsonNode content = response.getBody().get("content");
+        assertThat(content.get(0).get("name").asText()).isEqualTo("Bob");
+        assertThat(content.get(1).get("name").asText()).isEqualTo("Alice");
+    }
+
+    @Test
+    void findPaged_withCityFilter_returnsOnlyMatchingCustomers() {
+        restTemplate.postForEntity("/api/customers", buildRequest("Alice", "alice@test.com", "London"), CustomerResponseDTO.class);
+        restTemplate.postForEntity("/api/customers", buildRequest("Bob",   "bob@test.com",   "Paris"),  CustomerResponseDTO.class);
+        restTemplate.postForEntity("/api/customers", buildRequest("Carol", "carol@test.com", "London"), CustomerResponseDTO.class);
+
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                "/api/customers/page?city=London",
+                HttpMethod.GET, null, JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("totalElements").asInt()).isEqualTo(2);
     }
 }

@@ -23,6 +23,10 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+
 import java.util.List;
 
 import static org.springframework.data.mongodb.core.aggregation.Aggregation.lookup;
@@ -82,6 +86,17 @@ public class OrderService {
         return orderRepository.findByProductIdsContaining(new ObjectId(productId)).stream()
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    public Page<OrderResponseDTO> findPaged(int page, int size, String sortBy, String sortDir, Order.OrderStatus status) {
+        Sort sort = "desc".equalsIgnoreCase(sortDir)
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
+        PageRequest pageable = PageRequest.of(page, size, sort);
+        return (status != null
+                ? orderRepository.findByStatus(status, pageable)
+                : orderRepository.findAll(pageable))
+                .map(orderMapper::toResponse);
     }
 
     public OrderResponseDTO create(OrderRequestDTO dto) {

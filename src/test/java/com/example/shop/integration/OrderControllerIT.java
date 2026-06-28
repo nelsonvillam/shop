@@ -12,6 +12,7 @@ import com.example.shop.model.Order;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -224,6 +225,45 @@ class OrderControllerIT extends AbstractIntegrationTest {
         assertThat(productRepository.findById(productId1).get().getStock()).isEqualTo(stockBefore);
         // No order must have been persisted
         assertThat(orderRepository.count()).isEqualTo(ordersBefore);
+    }
+
+    // -------------------------------------------------------------------------
+    // Pagination tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    void findPaged_returnsCorrectPageSizeAndMetadata() {
+        restTemplate.postForEntity("/api/orders", buildRequest(customerId, List.of(productId1)), OrderResponseDTO.class);
+        restTemplate.postForEntity("/api/orders", buildRequest(customerId, List.of(productId2)), OrderResponseDTO.class);
+        restTemplate.postForEntity("/api/orders", buildRequest(customerId, List.of(productId1)), OrderResponseDTO.class);
+
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                "/api/orders/page?page=0&size=2&sortBy=total&sortDir=desc",
+                HttpMethod.GET, null, JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = response.getBody();
+        assertThat(body.get("content").size()).isEqualTo(2);
+        assertThat(body.get("totalElements").asInt()).isEqualTo(3);
+        assertThat(body.get("totalPages").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void findPaged_withStatusFilter_returnsOnlyMatchingOrders() {
+        OrderResponseDTO created = restTemplate.postForEntity(
+                "/api/orders", buildRequest(customerId, List.of(productId1)), OrderResponseDTO.class).getBody();
+        restTemplate.postForEntity("/api/orders", buildRequest(customerId, List.of(productId2)), OrderResponseDTO.class);
+
+        restTemplate.exchange("/api/orders/" + created.getId() + "/status?status=CONFIRMED",
+                HttpMethod.PATCH, null, OrderResponseDTO.class);
+
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                "/api/orders/page?status=CONFIRMED",
+                HttpMethod.GET, null, JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(response.getBody().get("content").get(0).get("status").asText()).isEqualTo("CONFIRMED");
     }
 
     @Test

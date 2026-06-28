@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -54,6 +55,22 @@ public class OrderController {
     @Operation(summary = "List orders that contain a specific product")
     public List<OrderResponseDTO> findByProduct(@PathVariable String productId) {
         return orderService.findByProduct(productId);
+    }
+
+    @TrackCall
+    @GetMapping("/page")
+    @Operation(
+        summary = "List orders with pagination, sorting, and optional status filter",
+        description = "Sort fields: total, createdAt, status. Sort direction: asc, desc."
+    )
+    public Page<OrderResponseDTO> findPaged(
+            @Parameter(description = "Zero-based page index") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size")             @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Field to sort by")      @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction")        @RequestParam(defaultValue = "desc") String sortDir,
+            @Parameter(description = "Filter by order status: PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED")
+            @RequestParam(required = false) Order.OrderStatus status) {
+        return orderService.findPaged(page, size, sortBy, sortDir, status);
     }
 
     @TrackCall

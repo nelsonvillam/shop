@@ -7,6 +7,9 @@ import com.example.shop.mapper.CustomerMapper;
 import com.example.shop.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -55,6 +58,17 @@ public class CustomerService {
     public void delete(String id) {
         customerRepository.deleteById(id);
         log.info("Customer deleted: id={}", id);
+    }
+
+    public Page<CustomerResponseDTO> findPaged(int page, int size, String sortBy, String sortDir, String city) {
+        Sort sort = "desc".equalsIgnoreCase(sortDir)
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
+        PageRequest pageable = PageRequest.of(page, size, sort);
+        return (city != null && !city.isBlank()
+                ? customerRepository.findByAddressCityContainingIgnoreCase(city, pageable)
+                : customerRepository.findAll(pageable))
+                .map(customerMapper::toResponse);
     }
 
     public List<CustomerResponseDTO> findByAddress(String keyword) {

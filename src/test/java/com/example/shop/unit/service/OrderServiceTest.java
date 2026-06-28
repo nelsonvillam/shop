@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -171,6 +174,28 @@ class OrderServiceTest {
         assertThatThrownBy(() -> orderService.placeOrder(requestDTO, false))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("products not found");
+    }
+
+    @Test
+    void findPaged_noStatusFilter_returnsAllOrdersPage() {
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findAll(any(Pageable.class))).thenReturn(page);
+        when(orderMapper.toResponse(order)).thenReturn(responseDTO);
+
+        Page<OrderResponseDTO> result = orderService.findPaged(0, 10, "total", "desc", null);
+
+        assertThat(result.getContent()).containsExactly(responseDTO);
+    }
+
+    @Test
+    void findPaged_withStatusFilter_returnsFilteredPage() {
+        Page<Order> page = new PageImpl<>(List.of(order));
+        when(orderRepository.findByStatus(eq(Order.OrderStatus.PENDING), any(Pageable.class))).thenReturn(page);
+        when(orderMapper.toResponse(order)).thenReturn(responseDTO);
+
+        Page<OrderResponseDTO> result = orderService.findPaged(0, 10, "total", "desc", Order.OrderStatus.PENDING);
+
+        assertThat(result.getContent()).containsExactly(responseDTO);
     }
 
     @Test

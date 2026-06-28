@@ -10,6 +10,8 @@ pipeline {
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
         SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
+        EKS_CLUSTER       = 'shop-cluster'   // replace with your EKS cluster name
+        AWS_REGION        = 'us-east-1'      // replace with your cluster region
     }
 
     stages {
@@ -129,35 +131,79 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-            // Requires: kubectl on the Jenkins agent PATH, and a kubeconfig
-            // stored as a Jenkins "Secret file" credential named 'k8s-kubeconfig'.
+            // No Jenkins credential needed for cluster access — kubectl authenticates
+            // via the EC2 instance IAM role (requires eks:DescribeCluster permission).
             //
-            // K8s secrets (mongodb-credentials, mongodb-keyfile, shop-secret)
-            // are provisioned once by the cluster admin — not managed here.
-            // Only non-secret resources are applied on every build.
+            // All secrets are fetched from AWS Secrets Manager on every build so the
+            // cluster always reflects the current secret values without manual rotation.
             steps {
-                withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh """
-                        # Inject the exact build tag into the Deployment so :latest
-                        # never lands in the cluster — enables clean rollbacks.
-                        sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \\
-                            k8s/shop/deployment.yaml | kubectl apply -f -
+                sh """
+                    # ── 1. Cluster access ────────────────────────────────────────────
+                    aws eks update-kubeconfig \
+                        --name ${EKS_CLUSTER} \
+                        --region ${AWS_REGION}
 
-                        kubectl apply -f k8s/shop/configmap.yaml
-                        kubectl apply -f k8s/shop/service.yaml
-                        kubectl apply -f k8s/shop/ingress.yaml
-                    """
+                    # ── 2. Fetch secrets from AWS Secrets Manager ─────────────────────
+                    MONGO_USER=\$(aws secretsmanager get-secret-value \
+                        --secret-id shop/mongo-user \
+                        --query SecretString --output text --region ${AWS_REGION})
 
-                    // Block until all pods pass their readiness probes.
-                    sh "kubectl rollout status deployment/shop -n shop --timeout=5m"
-                }
+                    MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
+                        --secret-id shop/mongo-password \
+                        --query SecretString --output text --region ${AWS_REGION})
+
+                    ADMIN_PASSWORD=\$(aws secretsmanager get-secret-value \
+                        --secret-id shop/admin-password \
+                        --query SecretString --output text --region ${AWS_REGION})
+
+                    JWT_SECRET=\$(aws secretsmanager get-secret-value \
+                        --secret-id shop/jwt-secret \
+                        --query SecretString --output text --region ${AWS_REGION})
+
+                    KEYFILE=\$(aws secretsmanager get-secret-value \
+                        --secret-id shop/mongodb-keyfile \
+                        --query SecretString --output text --region ${AWS_REGION})
+
+                    # ── 3. Upsert K8s secrets (create if new, update if changed) ─────
+                    kubectl create secret generic mongodb-credentials \
+                        --namespace shop \
+                        --from-literal=username="\${MONGO_USER}" \
+                        --from-literal=password="\${MONGO_PASSWORD}" \
+                        --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+                    kubectl create secret generic mongodb-keyfile \
+                        --namespace shop \
+                        --from-literal=keyfile="\${KEYFILE}" \
+                        --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+                    kubectl create secret generic shop-secret \
+                        --namespace shop \
+                        --from-literal=JWT_SECRET="\${JWT_SECRET}" \
+                        --from-literal=ADMIN_PASSWORD="\${ADMIN_PASSWORD}" \
+                        --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
+                        --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+                    # ── 4. Apply non-secret resources with pinned image tag ───────────
+                    sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
+                        k8s/shop/deployment.yaml | kubectl apply -f -
+
+                    kubectl apply -f k8s/shop/configmap.yaml
+                    kubectl apply -f k8s/shop/service.yaml
+                    kubectl apply -f k8s/shop/ingress.yaml
+                """
+
+                // Block until all pods pass their readiness probes.
+                sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
             }
 
             post {
                 failure {
-                    withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh "kubectl rollout undo deployment/shop -n shop || true"
-                    }
+                    sh """
+                        aws eks update-kubeconfig \
+                            --name ${EKS_CLUSTER} \
+                            --region ${AWS_REGION}
+                        kubectl rollout undo deployment/shop --namespace shop || true
+                    """
                 }
             }
         }

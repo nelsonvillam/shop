@@ -12,6 +12,7 @@ import com.example.shop.model.Product;
 import com.example.shop.repository.CustomerRepository;
 import com.example.shop.repository.OrderRepository;
 import com.example.shop.repository.ProductRepository;
+import io.github.resilience4j.retry.annotation.Retry;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.annotation.Observed;
@@ -134,6 +135,7 @@ public class OrderService {
         log.info("Order deleted: id={}", id);
     }
 
+    @Retry(name = "placeOrder")
     @Observed(name = "order.place", contextualName = "place-order")
     @Transactional
     public OrderResponseDTO placeOrder(OrderRequestDTO dto, boolean simulateFail) {

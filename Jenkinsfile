@@ -146,7 +146,8 @@ pipeline {
                     # ── 1. Switch to local cluster ───────────────────────────────────
                     kubectl config use-context docker-desktop
 
-                    # ── 2. Fetch secrets from AWS Secrets Manager ─────────────────────
+                    # ── 2 & 3. Fetch secrets and upsert into cluster (no xtrace) ─────
+                    set +x
                     MONGO_USER=\$(aws secretsmanager get-secret-value \
                         --secret-id shop/mongo-user \
                         --query SecretString --output text --region ${AWS_REGION})
@@ -167,7 +168,6 @@ pipeline {
                         --secret-id shop/mongodb-keyfile \
                         --query SecretString --output text --region ${AWS_REGION})
 
-                    # ── 3. Upsert K8s secrets (create if new, update if changed) ─────
                     kubectl create secret generic mongodb-credentials \
                         --namespace shop \
                         --from-literal=username="\${MONGO_USER}" \
@@ -185,6 +185,7 @@ pipeline {
                         --from-literal=ADMIN_PASSWORD="\${ADMIN_PASSWORD}" \
                         --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
                         --save-config --dry-run=client -o yaml | kubectl apply -f -
+                    set -x
 
                     # ── 4. Deploy with pinned image tag ──────────────────────────────
                     sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \

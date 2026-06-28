@@ -30,6 +30,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'mkdir -p build/reports/problems'
                 sh './gradlew checkstyleMain pmdMain spotbugsMain --no-daemon'
             }
         }
@@ -43,6 +44,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'mkdir -p build/reports/problems'
                 sh './gradlew compileTestJava --no-daemon'
             }
         }
@@ -59,6 +61,7 @@ pipeline {
                         }
                     }
                     steps {
+                        sh 'mkdir -p build/reports/problems'
                         sh './gradlew test --no-daemon'
                     }
                     post {
@@ -69,6 +72,7 @@ pipeline {
                 }
                 stage('Integration Test') {
                     steps {
+                        sh 'mkdir -p build/reports/problems'
                         sh './gradlew integrationTest --no-daemon'
                     }
                     post {
@@ -90,6 +94,7 @@ pipeline {
             }
             steps {
                 withSonarQubeEnv('sonarqube') {
+                    sh 'mkdir -p build/reports/problems'
                     sh './gradlew jacocoTestReport sonar --no-daemon'
                 }
             }
@@ -112,6 +117,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'mkdir -p build/reports/problems'
                 sh './gradlew bootJar --no-daemon'
             }
         }

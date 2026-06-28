@@ -1,7 +1,6 @@
 resources:
   - namespace.yaml
-  - mongodb/credentials-secret.yaml
-  - mongodb/keyfile-secret.yaml
+  - storageclass.yaml
   - mongodb/headless-service.yaml
   - mongodb/service.yaml
   - mongodb/statefulset.yaml
@@ -11,7 +10,10 @@ resources:
   - zipkin/deployment.yaml
   - zipkin/service.yaml
   - shop/configmap.yaml
-  - shop/secret.yaml
   - shop/deployment.yaml
   - shop/service.yaml
   - shop/ingress.yaml
+  # Secret files (mongodb/credentials-secret.yaml, mongodb/keyfile-secret.yaml,
+  # shop/secret.yaml) are intentionally excluded — they contain only CHANGE_ME
+  # placeholders. Real secrets are created from AWS Secrets Manager by the
+  # Jenkins pipeline (or manually via the one-time setup in KUBERNETES.md).

@@ -15,3 +15,11 @@ patches:
     target:
       kind: StatefulSet
       name: mongo
+  # Set Swagger server URL to match the port-forward tunnel (localhost:9090)
+  - patch: |-
+      - op: replace
+        path: /data/SPRINGDOC_SERVER_URL
+        value: "http://localhost:9090"
+    target:
+      kind: ConfigMap
+      name: shop-config

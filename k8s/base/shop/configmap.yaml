@@ -11,3 +11,6 @@ data:
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   ZIPKIN_URL: http://zipkin:9411
+  # Swagger server URL — overridden per overlay so curl examples match the actual access URL.
+  # Empty = SpringDoc auto-detects from request (correct for EKS with a real hostname).
+  SPRINGDOC_SERVER_URL: ""

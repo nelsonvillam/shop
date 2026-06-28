@@ -8,8 +8,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: shop.example.com    # replace with your actual domain
-      http:
+    - http:
         paths:
           - path: /
             pathType: Prefix

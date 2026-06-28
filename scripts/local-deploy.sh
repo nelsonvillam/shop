@@ -71,10 +71,18 @@ kubectl rollout status deployment/shop \
   --namespace "$NAMESPACE" --timeout=5m
 
 echo ""
+echo "==> Starting port-forward (Docker Desktop does not provision LoadBalancer IPs)"
+pkill -f "kubectl port-forward" 2>/dev/null || true
+sleep 1
+kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 9090:80 &
+sleep 2
+
+echo ""
 echo "✓ Deployment complete"
 echo ""
-echo "  Swagger UI:  http://localhost/swagger-ui/index.html"
-echo "  Health:      http://localhost/actuator/health"
+echo "  Swagger UI:  http://localhost:9090/swagger-ui/index.html"
+echo "  Health:      http://localhost:9090/actuator/health"
 echo "  Zipkin:      kubectl port-forward svc/zipkin 9411:9411 -n shop"
 echo ""
 echo "  Watch pods:  kubectl get pods -n shop --watch"
+echo "  Stop tunnel: pkill -f 'kubectl port-forward'"

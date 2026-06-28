@@ -1,12 +1,22 @@
 services:
   mongo:
     image: mongo:7
+    command: mongod --replSet rs0 --bind_ip_all
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
       MONGO_INITDB_DATABASE: shop
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      test: >
+        mongosh -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD
+        --authenticationDatabase admin --quiet --eval
+        "try { rs.status().ok } catch(e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -28,13 +38,16 @@ services:
       MONGO_PASSWORD: ${MONGO_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/shop?authSource=admin&directConnection=true
       ZIPKIN_URL: http://zipkin:9411
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
-      - mongo
-      - redis
-      - zipkin
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      zipkin:
+        condition: service_started
 
 volumes:
   mongo-data:

@@ -5,6 +5,7 @@ import com.example.shop.dto.OrderRequestDTO;
 import com.example.shop.dto.OrderResponseDTO;
 import com.example.shop.metrics.TrackCall;
 import com.example.shop.model.Order;
+import com.example.shop.service.OrderChangeStreamService;
 import com.example.shop.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -35,6 +38,17 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderChangeStreamService orderChangeStreamService;
+
+    @TrackCall
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(
+        summary = "Subscribe to real-time order change events (SSE)",
+        description = "Emits an 'order-change' event for every insert, update, or replace on the orders collection. "
+                    + "Connect with EventSource or curl --no-buffer. Requires authentication.")
+    public SseEmitter streamOrderChanges() {
+        return orderChangeStreamService.addEmitter();
+    }
 
     @TrackCall
     @GetMapping

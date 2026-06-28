@@ -208,6 +208,7 @@ All documentation is in the [`docs/`](docs/) directory.
 | [CICD.md](docs/CICD.md) | CI/CD pipeline stages explained |
 | [JENKINSFILE_EXPLAINED.md](docs/JENKINSFILE_EXPLAINED.md) | Jenkinsfile line-by-line explanation |
 | [BUILD_GRADLE_EXPLAINED.md](docs/BUILD_GRADLE_EXPLAINED.md) | build.gradle explained |
+| [KUBERNETES.md](docs/KUBERNETES.md) | Kubernetes deployment, service discovery, and CI/CD integration |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Local and EC2 deployment guide |
 | [AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md) | AWS EC2 step-by-step guide |
 | [AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) | Production deployment with ECS + Atlas + ElastiCache |

@@ -5,6 +5,7 @@ set -eo pipefail
 # For a single-node replica set there are no other members to authenticate,
 # so a fresh random key on each start is fine.
 openssl rand -base64 32 > /tmp/mongodb.key
+chown mongodb:mongodb /tmp/mongodb.key
 chmod 400 /tmp/mongodb.key
 
 exec docker-entrypoint.sh mongod \

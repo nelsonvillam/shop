@@ -128,23 +128,36 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to Kubernetes') {
+            // Requires: kubectl on the Jenkins agent PATH, and a kubeconfig
+            // stored as a Jenkins "Secret file" credential named 'k8s-kubeconfig'.
+            //
+            // K8s secrets (mongodb-credentials, mongodb-keyfile, shop-secret)
+            // are provisioned once by the cluster admin — not managed here.
+            // Only non-secret resources are applied on every build.
             steps {
-                withCredentials([
-                    string(credentialsId: 'shop/mongo-user',         variable: 'MONGO_USER'),
-                    string(credentialsId: 'shop/mongo-password',     variable: 'MONGO_PASSWORD'),
-                    string(credentialsId: 'shop/admin-password',     variable: 'ADMIN_PASSWORD'),
-                    file(credentialsId: 'ec2-ssh-key', variable: 'EC2_KEY')
-                ]) {
+                withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
-                        docker stop shop || true
-                        docker rm shop || true
-                        docker compose down --remove-orphans -v || true
-                        docker compose up -d
+                        # Inject the exact build tag into the Deployment so :latest
+                        # never lands in the cluster — enables clean rollbacks.
+                        sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \\
+                            k8s/shop/deployment.yaml | kubectl apply -f -
 
-                        ssh -o StrictHostKeyChecking=no -i \$EC2_KEY ubuntu@15.228.216.109 \
-                            'cd ~/shop && docker-compose down --remove-orphans -v && docker-compose pull shop && docker-compose up -d'
+                        kubectl apply -f k8s/shop/configmap.yaml
+                        kubectl apply -f k8s/shop/service.yaml
+                        kubectl apply -f k8s/shop/ingress.yaml
                     """
+
+                    // Block until all pods pass their readiness probes.
+                    sh "kubectl rollout status deployment/shop -n shop --timeout=5m"
+                }
+            }
+
+            post {
+                failure {
+                    withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh "kubectl rollout undo deployment/shop -n shop || true"
+                    }
                 }
             }
         }
@@ -202,7 +215,7 @@ pipeline {
             ])
         }
         success {
-            echo "Deployment of ${IMAGE_NAME}:${IMAGE_TAG} succeeded."
+            echo "Deployed ${IMAGE_NAME}:${IMAGE_TAG} to Kubernetes successfully."
         }
         failure {
             echo "Pipeline failed. Check the logs above."

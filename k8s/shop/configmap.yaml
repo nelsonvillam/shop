@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-config
+  namespace: shop
+data:
+  SPRING_PROFILES_ACTIVE: prod
+  # K8s DNS resolves these short names within the shop namespace automatically:
+  #   redis  -> redis.shop.svc.cluster.local
+  #   zipkin -> zipkin.shop.svc.cluster.local
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  ZIPKIN_URL: http://zipkin:9411

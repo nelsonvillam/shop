@@ -1,0 +1,17 @@
+resources:
+  - namespace.yaml
+  - mongodb/credentials-secret.yaml
+  - mongodb/keyfile-secret.yaml
+  - mongodb/headless-service.yaml
+  - mongodb/service.yaml
+  - mongodb/statefulset.yaml
+  - mongodb/rs-init-job.yaml
+  - redis/deployment.yaml
+  - redis/service.yaml
+  - zipkin/deployment.yaml
+  - zipkin/service.yaml
+  - shop/configmap.yaml
+  - shop/secret.yaml
+  - shop/deployment.yaml
+  - shop/service.yaml
+  - shop/ingress.yaml

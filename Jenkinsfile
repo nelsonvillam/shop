@@ -10,7 +10,6 @@ pipeline {
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
         SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
-        EKS_CLUSTER       = 'shop-cluster'
         AWS_REGION        = 'sa-east-1'
     }
 
@@ -137,17 +136,15 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-            // No Jenkins credential needed for cluster access — kubectl authenticates
-            // via the EC2 instance IAM role (requires eks:DescribeCluster permission).
+            // Deploys to the local Docker Desktop Kubernetes cluster.
+            // Secrets are fetched from AWS Secrets Manager on every build.
             //
-            // All secrets are fetched from AWS Secrets Manager on every build so the
-            // cluster always reflects the current secret values without manual rotation.
+            // To switch back to EKS: replace KUBE_CONTEXT with the EKS context
+            // name and add the aws eks update-kubeconfig step before the secret fetch.
             steps {
                 sh """
-                    # ── 1. Cluster access ────────────────────────────────────────────
-                    aws eks update-kubeconfig \
-                        --name ${EKS_CLUSTER} \
-                        --region ${AWS_REGION}
+                    # ── 1. Switch to local cluster ───────────────────────────────────
+                    kubectl config use-context docker-desktop
 
                     # ── 2. Fetch secrets from AWS Secrets Manager ─────────────────────
                     MONGO_USER=\$(aws secretsmanager get-secret-value \
@@ -189,27 +186,21 @@ pipeline {
                         --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
                         --save-config --dry-run=client -o yaml | kubectl apply -f -
 
-                    # ── 4. Apply non-secret resources with pinned image tag ───────────
+                    # ── 4. Deploy with pinned image tag ──────────────────────────────
                     sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
-                        k8s/shop/deployment.yaml | kubectl apply -f -
+                        k8s/base/shop/deployment.yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/shop/configmap.yaml
-                    kubectl apply -f k8s/shop/service.yaml
-                    kubectl apply -f k8s/shop/ingress.yaml
+                    kubectl apply -f k8s/base/shop/configmap.yaml
+                    kubectl apply -f k8s/base/shop/service.yaml
+                    kubectl apply -f k8s/base/shop/ingress.yaml
                 """
 
-                // Block until all pods pass their readiness probes.
                 sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
             }
 
             post {
                 failure {
-                    sh """
-                        aws eks update-kubeconfig \
-                            --name ${EKS_CLUSTER} \
-                            --region ${AWS_REGION}
-                        kubectl rollout undo deployment/shop --namespace shop || true
-                    """
+                    sh "kubectl rollout undo deployment/shop --namespace shop || true"
                 }
             }
         }

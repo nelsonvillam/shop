@@ -139,11 +139,11 @@ pipeline {
                     sh """
                         docker stop shop || true
                         docker rm shop || true
-                        docker compose down --remove-orphans || true
+                        docker compose down --remove-orphans -v || true
                         docker compose up -d
 
                         ssh -o StrictHostKeyChecking=no -i \$EC2_KEY ubuntu@15.228.216.109 \
-                            'cd ~/shop && docker-compose pull shop && docker-compose up -d'
+                            'cd ~/shop && docker-compose down --remove-orphans -v && docker-compose pull shop && docker-compose up -d'
                     """
                 }
             }

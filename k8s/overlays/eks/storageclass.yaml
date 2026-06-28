@@ -1,0 +1,13 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2-csi
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+# Uses the EBS CSI driver (aws-ebs-csi-driver addon must be installed).
+# The in-tree kubernetes.io/aws-ebs provisioner was removed in K8s 1.27+.
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  type: gp2

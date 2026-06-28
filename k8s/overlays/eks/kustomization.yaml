@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# EKS overlay: inherits all base resources and adds the gp2-csi StorageClass
+# (requires aws-ebs-csi-driver addon — see docs/AWS_EKS_SETUP.md).
+resources:
+  - ../../base
+  - storageclass.yaml

@@ -1,19 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# EKS deployment (used by CI/CD pipeline).
+# For local Docker Desktop deployment use: kubectl apply -k k8s/overlays/local/
 resources:
-  - namespace.yaml
-  - storageclass.yaml
-  - mongodb/headless-service.yaml
-  - mongodb/service.yaml
-  - mongodb/statefulset.yaml
-  - mongodb/rs-init-job.yaml
-  - redis/deployment.yaml
-  - redis/service.yaml
-  - zipkin/deployment.yaml
-  - zipkin/service.yaml
-  - shop/configmap.yaml
-  - shop/deployment.yaml
-  - shop/service.yaml
-  - shop/ingress.yaml
-  # Secret files (mongodb/credentials-secret.yaml, mongodb/keyfile-secret.yaml,
-  # shop/secret.yaml) are intentionally excluded — they contain only CHANGE_ME
-  # placeholders. Real secrets are created from AWS Secrets Manager by the
-  # Jenkins pipeline (or manually via the one-time setup in KUBERNETES.md).
+  - overlays/eks

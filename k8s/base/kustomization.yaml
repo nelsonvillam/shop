@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base resources shared by all environments.
+# StorageClass is NOT included here — each overlay provides its own.
+resources:
+  - namespace.yaml
+  - mongodb/headless-service.yaml
+  - mongodb/service.yaml
+  - mongodb/statefulset.yaml
+  - mongodb/rs-init-job.yaml
+  - redis/deployment.yaml
+  - redis/service.yaml
+  - zipkin/deployment.yaml
+  - zipkin/service.yaml
+  - shop/configmap.yaml
+  - shop/deployment.yaml
+  - shop/service.yaml
+  - shop/ingress.yaml

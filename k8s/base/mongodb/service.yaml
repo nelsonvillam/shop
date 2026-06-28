@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: shop
+spec:
+  # Regular ClusterIP service — routes to any ready mongo pod.
+  # The shop app uses a URI that lists all 3 members directly, so this
+  # service is used only for ad-hoc tooling (mongosh, monitoring).
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+      targetPort: 27017

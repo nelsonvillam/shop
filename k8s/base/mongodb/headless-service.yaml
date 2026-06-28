@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-headless
+  namespace: shop
+spec:
+  # clusterIP: None makes K8s return individual pod IPs via DNS instead of a
+  # virtual IP, which is required for StatefulSet stable network identities.
+  # Each pod gets: mongo-{0,1,2}.mongo-headless.shop.svc.cluster.local
+  clusterIP: None
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+      targetPort: 27017

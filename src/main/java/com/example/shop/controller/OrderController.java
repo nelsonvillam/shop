@@ -3,6 +3,7 @@ package com.example.shop.controller;
 import com.example.shop.dto.OrderDetailResponseDTO;
 import com.example.shop.dto.OrderRequestDTO;
 import com.example.shop.dto.OrderResponseDTO;
+import com.example.shop.idempotency.Idempotent;
 import com.example.shop.metrics.TrackCall;
 import com.example.shop.model.Order;
 import com.example.shop.service.OrderChangeStreamService;
@@ -115,6 +116,7 @@ public class OrderController {
     }
 
     @TrackCall
+    @Idempotent
     @PostMapping("/place")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(

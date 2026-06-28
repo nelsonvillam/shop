@@ -212,6 +212,7 @@ All documentation is in the [`docs/`](docs/) directory.
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Local and EC2 deployment guide |
 | [AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md) | AWS EC2 step-by-step guide |
 | [AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) | Production deployment with ECS + Atlas + ElastiCache |
+| [AWS_EKS_SETUP.md](docs/AWS_EKS_SETUP.md) | EKS cluster creation, IAM policies, Secrets Manager, kubectl access |
 | [TESTING.md](docs/TESTING.md) | Testing strategy and how to run tests |
 | [DOCKER_CONCEPTS.md](docs/DOCKER_CONCEPTS.md) | Docker concepts used in this project |
 | [TESTCONTAINERS.md](docs/TESTCONTAINERS.md) | Testcontainers setup explained |

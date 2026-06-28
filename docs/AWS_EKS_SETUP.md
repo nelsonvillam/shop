@@ -236,6 +236,48 @@ aws cloudformation describe-stacks \
 
 ---
 
+## Choosing Node Instance Types
+
+> **Free-tier restriction:** Some AWS accounts restrict EC2 launches to free-tier eligible instance types. If your node group creation fails with a policy error, check which types are eligible in your region before retrying:
+> ```bash
+> aws ec2 describe-instance-types \
+>   --region sa-east-1 \
+>   --filters "Name=free-tier-eligible,Values=true" \
+>   --query 'InstanceTypes[*].InstanceType' \
+>   --output text
+> ```
+> In `sa-east-1`, confirmed free-tier eligible types include: `t3.micro`, `t4g.micro`, `t3.small`, `t4g.small`, `c7i-flex.large`, `m7i-flex.large`.
+
+| Type | vCPU | RAM | Notes |
+|---|---|---|---|
+| `t3.micro` | 2 | 1 GiB | Too small for this project |
+| `t3.small` | 2 | 2 GiB | Single lightweight service only |
+| `t3.medium` | 2 | 4 GiB | Good general purpose — **may not be free-tier eligible** |
+| `m7i-flex.large` | 2 | 8 GiB | Free-tier eligible in sa-east-1, recommended for this project |
+| `t3.large` | 2 | 8 GiB | MongoDB + Redis + app on fewer nodes |
+| `m5.xlarge` | 4 | 16 GiB | Production workloads |
+
+**Rule of thumb for this project** (MongoDB × 3 + shop × 2 + Redis + Zipkin):
+- Total pod memory requests: ~2.9 GiB
+- 2 × `m7i-flex.large` (8 GiB each, allocatable ~6.5 GiB each) gives comfortable headroom ✓
+
+If a node group creation fails due to instance type restrictions, delete the failed CloudFormation stack before retrying:
+
+```bash
+# Disable termination protection first (if set)
+aws cloudformation update-termination-protection \
+  --stack-name <failed-stack-name> \
+  --no-enable-termination-protection \
+  --region sa-east-1
+
+# Then delete
+aws cloudformation delete-stack \
+  --stack-name <failed-stack-name> \
+  --region sa-east-1
+```
+
+---
+
 ## Creating the Cluster
 
 ### Method 1 — eksctl (recommended)
@@ -249,7 +291,7 @@ eksctl create cluster \
   --name shop-cluster \
   --region sa-east-1 \
   --nodegroup-name shop-nodes \
-  --node-type t3.medium \
+  --node-type m7i-flex.large \
   --nodes 2 \
   --nodes-min 1 \
   --nodes-max 3 \
@@ -270,7 +312,7 @@ eksctl create cluster \
   --name shop-cluster \
   --region sa-east-1 \
   --nodegroup-name shop-nodes \
-  --node-type t3.medium \
+  --node-type m7i-flex.large \
   --nodes 2 \
   --nodes-min 1 \
   --nodes-max 3 \
@@ -291,14 +333,18 @@ metadata:
   region: sa-east-1
   version: "1.34"
 
+# Explicitly disable Auto Mode to keep managed node groups
+autoModeConfig:
+  enabled: false
+
 managedNodeGroups:
   - name: shop-nodes
-    instanceType: t3.medium
+    instanceType: m7i-flex.large   # free-tier eligible in sa-east-1
     minSize: 1
     maxSize: 3
     desiredCapacity: 2
     volumeSize: 20
-    privateNetworking: false   # set true when using private subnets
+    privateNetworking: false       # set true when using private subnets
     iam:
       withAddonPolicies:
         autoScaler: true
@@ -423,7 +469,7 @@ aws eks create-nodegroup \
   --nodegroup-name shop-nodes \
   --node-role $NODE_ROLE_ARN \
   --subnets subnet-aaa subnet-bbb subnet-ccc \
-  --instance-types t3.medium \
+  --instance-types m7i-flex.large \
   --scaling-config minSize=1,maxSize=3,desiredSize=2 \
   --disk-size 20 \
   --ami-type AL2023_x86_64_STANDARD
@@ -531,6 +577,91 @@ eksctl create iamidentitymapping \
 
 ---
 
+## Installing the EBS CSI Driver (Required for K8s 1.27+)
+
+Kubernetes 1.27 removed the in-tree `kubernetes.io/aws-ebs` provisioner. If you use a StorageClass with that provisioner, PVCs will stay `Pending` indefinitely. The `aws-ebs-csi-driver` addon replaces it.
+
+### Step 1 — Enable OIDC on the cluster
+
+OIDC is required for the addon's IAM role to work (IRSA — IAM Roles for Service Accounts):
+
+```bash
+eksctl utils associate-iam-oidc-provider \
+  --cluster shop-cluster \
+  --region sa-east-1 \
+  --approve
+```
+
+### Step 2 — Create the IAM service account
+
+```bash
+eksctl create iamserviceaccount \
+  --name ebs-csi-controller-sa \
+  --namespace kube-system \
+  --cluster shop-cluster \
+  --region sa-east-1 \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --approve \
+  --role-name AmazonEKS_EBS_CSI_DriverRole
+```
+
+### Step 3 — Install the addon
+
+```bash
+aws eks create-addon \
+  --cluster-name shop-cluster \
+  --addon-name aws-ebs-csi-driver \
+  --region sa-east-1 \
+  --service-account-role-arn $(aws iam get-role \
+      --role-name AmazonEKS_EBS_CSI_DriverRole \
+      --query Role.Arn --output text)
+
+# Verify the addon is active
+aws eks describe-addon \
+  --cluster-name shop-cluster \
+  --addon-name aws-ebs-csi-driver \
+  --region sa-east-1 \
+  --query 'addon.status'
+```
+
+### Step 4 — Verify the StorageClass
+
+The `k8s/storageclass.yaml` manifest creates a `gp2-csi` StorageClass using `ebs.csi.aws.com`:
+
+```bash
+kubectl get storageclass
+# NAME       PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE
+# gp2-csi    ebs.csi.aws.com         Delete          WaitForFirstConsumer
+```
+
+PVCs in the `shop` namespace use `storageClassName: gp2-csi` and will be provisioned automatically when a pod is scheduled.
+
+---
+
+## Installing the nginx Ingress Controller
+
+EKS does not include an Ingress Controller by default. Install nginx to handle external HTTP traffic.
+
+```bash
+kubectl apply -f \
+  https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
+
+# Wait until the controller pod is running
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
+
+# Get the external hostname (AWS creates a Classic or NLB load balancer)
+kubectl get service ingress-nginx-controller \
+  --namespace ingress-nginx \
+  --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+Point your DNS record (e.g. `shop.yourdomain.com`) to this hostname using a CNAME. To test without DNS, the Ingress in this project accepts any hostname — access the app directly via the load balancer URL.
+
+---
+
 ## AWS Secrets Manager Integration
 
 Store sensitive values in AWS Secrets Manager — never in environment files or Git.
@@ -552,7 +683,19 @@ aws secretsmanager create-secret \
   --secret-string "$(openssl rand -base64 32)" \
   --region sa-east-1
 
-# Binary-safe secret (keyfile, certificates)
+aws secretsmanager create-secret \
+  --name shop/admin-password \
+  --description "Shop admin password" \
+  --secret-string "$(openssl rand -base64 24)" \
+  --region sa-east-1
+
+aws secretsmanager create-secret \
+  --name shop/jwt-secret \
+  --description "JWT signing secret" \
+  --secret-string "$(openssl rand -base64 64)" \
+  --region sa-east-1
+
+# MongoDB replica set keyfile (shared by all RS members)
 aws secretsmanager create-secret \
   --name shop/mongodb-keyfile \
   --description "MongoDB RS keyfile" \
@@ -589,6 +732,16 @@ aws secretsmanager update-secret \
 
 The next CI/CD pipeline run will pick up the new value automatically, since secrets are fetched at deploy time.
 
+### Existing secrets for this project (sa-east-1)
+
+| Secret name | Description |
+|---|---|
+| `shop/mongo-user` | MongoDB application username |
+| `shop/mongo-password` | MongoDB application password |
+| `shop/admin-password` | Shop admin panel password |
+| `shop/jwt-secret` | JWT signing key |
+| `shop/mongodb-keyfile` | MongoDB replica set internal auth keyfile |
+
 ### Required IAM permissions for secret access
 
 ```json
@@ -606,47 +759,6 @@ The trailing `/*` grants access to all secrets whose names start with `shop/`. U
 
 ---
 
-## Installing the nginx Ingress Controller
-
-EKS does not include an Ingress Controller by default. Install nginx to handle external HTTP traffic.
-
-```bash
-kubectl apply -f \
-  https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
-
-# Wait until the controller pod is running
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
-
-# Get the external hostname (AWS creates a Classic or NLB load balancer)
-kubectl get service ingress-nginx-controller \
-  --namespace ingress-nginx \
-  --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-```
-
-Point your DNS record (e.g. `shop.yourdomain.com`) to this hostname using a CNAME.
-
----
-
-## Choosing Node Instance Types
-
-| Type | vCPU | RAM | Use case |
-|---|---|---|---|
-| `t3.small` | 2 | 2 GiB | Single lightweight service |
-| `t3.medium` | 2 | 4 GiB | General purpose (recommended for this project) |
-| `t3.large` | 2 | 8 GiB | MongoDB + Redis + app on fewer nodes |
-| `m5.xlarge` | 4 | 16 GiB | Production workloads |
-
-**Rule of thumb:** add up all pod memory requests, add ~500 MiB per node for system overhead, then pick an instance type where 2 nodes cover the total with headroom.
-
-For this project (MongoDB × 3 + shop × 2 + Redis + Zipkin):
-- Total requests: ~1.5 CPU, ~2.9 GiB memory
-- 2 × `t3.medium` (allocatable: ~3.4 CPU, ~6.8 GiB) gives ~2× headroom ✓
-
----
-
 ## Cluster Costs
 
 EKS pricing in `sa-east-1` (approximate, check AWS pricing for current rates):
@@ -654,12 +766,19 @@ EKS pricing in `sa-east-1` (approximate, check AWS pricing for current rates):
 | Resource | Cost |
 |---|---|
 | EKS control plane | ~$0.10/hour (~$73/month) |
-| 2 × t3.medium nodes | ~$0.052/hour each (~$76/month for both) |
-| EBS volumes (PVCs) | ~$0.10/GiB-month |
+| 2 × m7i-flex.large nodes | ~$0.076/hour each (~$111/month for both) |
+| EBS volumes (PVCs, 3 × 10 GiB) | ~$0.10/GiB-month (~$3/month) |
 | Load balancer (Ingress) | ~$0.025/hour + data transfer |
-| **Total estimate** | **~$155/month** |
+| **Total estimate** | **~$190/month** |
 
-> EKS has no free tier. Delete the cluster when not in use to avoid charges (see [Cleanup](#cleanup)).
+> EKS has no free tier for the control plane. To pause costs during development, scale the node group to 0 (control plane still charges ~$73/month):
+> ```bash
+> aws eks update-nodegroup-config \
+>   --cluster-name shop-cluster \
+>   --nodegroup-name shop-nodes \
+>   --region sa-east-1 \
+>   --scaling-config minSize=0,maxSize=3,desiredSize=0
+> ```
 
 ---
 
@@ -679,6 +798,9 @@ aws eks update-nodegroup-config \
   --nodegroup-name shop-nodes \
   --region sa-east-1 \
   --scaling-config minSize=0,maxSize=3,desiredSize=0
+
+# Check installed addons
+aws eks list-addons --cluster-name shop-cluster --region sa-east-1
 
 # View all running pods across namespaces
 kubectl get pods --all-namespaces
@@ -726,11 +848,15 @@ aws secretsmanager delete-secret --secret-id shop/mongodb-keyfile --region sa-ea
 | Problem | Cause | Fix |
 |---|---|---|
 | `eksctl create cluster` fails with `ValidationError` | IAM user lacks permissions | Attach the `EksctlPolicy` shown in [IAM Permissions](#iam-permissions) |
+| Node group CloudFormation stack rolls back | Instance type not allowed by account policy | Check free-tier eligible types: `aws ec2 describe-instance-types --filters "Name=free-tier-eligible,Values=true"` and use one of those |
+| Cannot delete failed CloudFormation stack | Termination protection enabled | Run `aws cloudformation update-termination-protection --stack-name <name> --no-enable-termination-protection` first |
 | `kubectl get nodes` returns `Unauthorized` | kubeconfig not updated | Run `aws eks update-kubeconfig --name shop-cluster --region sa-east-1` |
 | Another IAM user can't access the cluster | Not added to `aws-auth` | Run `eksctl create iamidentitymapping` (see [Granting Other IAM Users](#granting-other-iam-users-cluster-access)) |
 | Nodes stuck in `NotReady` | VPC/subnet tag missing | Add tag `kubernetes.io/cluster/<cluster-name>=owned` to subnets |
-| Pods stuck in `Pending` | Not enough CPU/memory on nodes | Scale up node group or use larger instance type |
+| PVCs stuck in `Pending` | EBS CSI driver not installed, or wrong provisioner in StorageClass | Install `aws-ebs-csi-driver` addon with OIDC + IRSA; use `ebs.csi.aws.com` as provisioner |
+| Pods stuck in `Pending` (node capacity) | Not enough CPU/memory on nodes | Scale up node group or use larger instance type |
 | `ImagePullBackOff` | Docker Hub rate limit | Add Docker Hub credentials as a K8s `Secret` of type `kubernetes.io/dockerconfigjson` |
 | Load balancer hostname not resolving | DNS propagation delay | Wait 2–5 minutes after the LB is created |
 | `secretsmanager:GetSecretValue` denied | IAM policy not attached | Attach the Secrets Manager policy to the IAM user or role making the call |
 | EKS cluster creation hangs | CloudFormation rollback in progress | Check AWS Console → CloudFormation for the error event |
+| eksctl warns about Auto Mode | New default in newer eksctl | Set `autoModeConfig.enabled: false` in cluster config to keep managed node groups |

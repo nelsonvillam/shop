@@ -26,7 +26,7 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
                          │               shop namespace             │
                          │                                          │
   internet ─────────────▶│  Ingress (nginx)                        │
-                         │     shop.example.com → shop:80           │
+                         │     * → shop:80  (any hostname)         │
                          │         │                                │
                          │  ┌──────▼──────────────┐                │
                          │  │   shop Deployment    │                │
@@ -54,10 +54,11 @@ SS = StatefulSet
 k8s/
 ├── namespace.yaml                # "shop" namespace — all resources live here
 ├── kustomization.yaml            # apply everything with: kubectl apply -k k8s/
+├── storageclass.yaml             # gp2-csi StorageClass (EBS CSI driver, K8s 1.27+)
 │
 ├── mongodb/
-│   ├── credentials-secret.yaml  # MONGO_USER + MONGO_PASSWORD placeholders
-│   ├── keyfile-secret.yaml      # shared RS auth keyfile placeholder
+│   ├── credentials-secret.yaml  # PLACEHOLDER ONLY — see note below
+│   ├── keyfile-secret.yaml      # PLACEHOLDER ONLY — see note below
 │   ├── statefulset.yaml         # 3-node replica set with keyFile auth
 │   ├── headless-service.yaml    # stable DNS names for each pod
 │   ├── service.yaml             # ClusterIP for tooling / ad-hoc access
@@ -73,11 +74,13 @@ k8s/
 │
 └── shop/
     ├── configmap.yaml            # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
-    ├── secret.yaml               # JWT_SECRET, ADMIN_PASSWORD, MongoDB URI placeholders
+    ├── secret.yaml               # PLACEHOLDER ONLY — see note below
     ├── deployment.yaml           # 2 replicas, liveness + readiness probes
     ├── service.yaml              # ClusterIP port 80 → 8080
-    └── ingress.yaml              # nginx Ingress with host-based routing
+    └── ingress.yaml              # nginx Ingress, accepts any hostname
 ```
+
+> **Secret placeholder files** (`mongodb/credentials-secret.yaml`, `mongodb/keyfile-secret.yaml`, `shop/secret.yaml`) contain only `CHANGE_ME` values and are **intentionally excluded from `kustomization.yaml`**. Running `kubectl apply -k k8s/` will never overwrite cluster secrets with these placeholders. Real secrets are created from AWS Secrets Manager by the Jenkins pipeline, or manually using the commands in [One-Time Cluster Setup](#one-time-cluster-setup).
 
 ---
 
@@ -87,7 +90,8 @@ k8s/
 |---|---|
 | Kubernetes cluster | EKS, GKE, AKS, or local via `minikube` / `kind` |
 | `kubectl` ≥ 1.14 | Built-in Kustomize support included |
-| nginx Ingress Controller | `kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml` |
+| nginx Ingress Controller | `kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml` |
+| EBS CSI Driver (EKS only) | Required for PVC provisioning on K8s 1.27+ — see [StorageClass](#storageclass) |
 | Docker Hub image pushed | Jenkins pipeline must have run at least once |
 | `kubectl` configured | `~/.kube/config` pointed at the target cluster |
 
@@ -95,7 +99,9 @@ k8s/
 
 ## One-Time Cluster Setup
 
-Secrets are provisioned once by the cluster admin and are **never touched by the CI pipeline**. Run these commands before the first deploy.
+Secrets are provisioned from AWS Secrets Manager. The CI pipeline **fetches them and upserts them into the cluster** on every deploy using `--dry-run=client -o yaml | kubectl apply -f -`, which is idempotent — safe to run on both first run and re-runs.
+
+Run these commands once before the first deploy.
 
 ### Step 1 — Create the namespace
 
@@ -103,40 +109,66 @@ Secrets are provisioned once by the cluster admin and are **never touched by the
 kubectl apply -f k8s/namespace.yaml
 ```
 
-### Step 2 — MongoDB credentials
+### Step 2 — Apply all non-secret resources
 
 ```bash
+kubectl apply -k k8s/
+```
+
+This applies everything in `kustomization.yaml` — namespace, StorageClass, StatefulSet, Deployments, Services, ConfigMap, Ingress. Secret files are not in `kustomization.yaml` and will not be applied.
+
+### Step 3 — Create secrets from AWS Secrets Manager
+
+```bash
+export AWS_REGION=sa-east-1
+
+MONGO_USER=$(aws secretsmanager get-secret-value \
+  --secret-id shop/mongo-user --query SecretString --output text --region $AWS_REGION)
+MONGO_PASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id shop/mongo-password --query SecretString --output text --region $AWS_REGION)
+ADMIN_PASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id shop/admin-password --query SecretString --output text --region $AWS_REGION)
+JWT_SECRET=$(aws secretsmanager get-secret-value \
+  --secret-id shop/jwt-secret --query SecretString --output text --region $AWS_REGION)
+KEYFILE=$(aws secretsmanager get-secret-value \
+  --secret-id shop/mongodb-keyfile --query SecretString --output text --region $AWS_REGION)
+
 kubectl create secret generic mongodb-credentials \
   --namespace shop \
-  --from-literal=username=shopuser \
-  --from-literal=password=$(openssl rand -base64 32)
-```
+  --from-literal=username="$MONGO_USER" \
+  --from-literal=password="$MONGO_PASSWORD" \
+  --save-config --dry-run=client -o yaml | kubectl apply -f -
 
-### Step 3 — MongoDB replica set keyfile
-
-All 3 replica set members must share the exact same keyfile. MongoDB uses it to authenticate internal RS traffic — without it, secondary nodes cannot join the primary.
-
-```bash
 kubectl create secret generic mongodb-keyfile \
   --namespace shop \
-  --from-literal=keyfile="$(openssl rand -base64 756)"
-```
+  --from-literal=keyfile="$KEYFILE" \
+  --save-config --dry-run=client -o yaml | kubectl apply -f -
 
-> **Why 756 bytes?** MongoDB's minimum keyfile size is 6 bytes and maximum is 1024 bytes. 756 bytes base64-encoded is a common standard that produces a strong shared secret.
-
-### Step 4 — Shop app secrets
-
-Replace `MONGO_USER` and `MONGO_PASSWORD` in the URI with the values from Step 2.
-
-```bash
 kubectl create secret generic shop-secret \
   --namespace shop \
-  --from-literal=JWT_SECRET=$(openssl rand -base64 64) \
-  --from-literal=ADMIN_PASSWORD=changeme \
-  --from-literal=SPRING_DATA_MONGODB_URI="mongodb://shopuser:PASS@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0"
+  --from-literal=JWT_SECRET="$JWT_SECRET" \
+  --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+  --from-literal=SPRING_DATA_MONGODB_URI="mongodb://$MONGO_USER:$MONGO_PASSWORD@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
+  --save-config --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-> The URI lists all 3 replica set members. This lets the MongoDB driver survive a primary re-election without dropping connections — the driver queries each member to find out who is currently primary.
+### Step 4 — Wait for mongo-0, then init the replica set
+
+```bash
+kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
+
+kubectl apply -f k8s/mongodb/rs-init-job.yaml
+
+kubectl logs -l job-name=mongodb-rs-init --namespace shop --follow
+```
+
+Expected output: `Replica set initialized successfully` or `Replica set already initialized`.
+
+> **If the RS init Job started before secrets were correct:** The Job pod captures env vars at pod creation time. Delete the Job and reapply to create a fresh pod with the correct credentials.
+> ```bash
+> kubectl delete job mongodb-rs-init --namespace shop
+> kubectl apply -f k8s/mongodb/rs-init-job.yaml
+> ```
 
 ---
 
@@ -145,13 +177,8 @@ kubectl create secret generic shop-secret \
 ### First deploy
 
 ```bash
-# Apply all non-secret resources (namespace, StatefulSet, Deployments, Services, Ingress)
 kubectl apply -k k8s/
-
-# Wait for mongo-0 to be ready before initiating the replica set
 kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
-
-# Run the replica set init Job (idempotent — safe to run again later)
 kubectl apply -f k8s/mongodb/rs-init-job.yaml
 ```
 
@@ -160,13 +187,61 @@ kubectl apply -f k8s/mongodb/rs-init-job.yaml
 The Jenkins pipeline handles this automatically. To deploy manually:
 
 ```bash
-kubectl apply -k k8s/
+IMAGE_TAG=42   # replace with your build number
+sed "s|nelsonvillam/shop:latest|nelsonvillam/shop:${IMAGE_TAG}|g" \
+  k8s/shop/deployment.yaml | kubectl apply -f -
+
+kubectl apply -f k8s/shop/configmap.yaml
+kubectl apply -f k8s/shop/service.yaml
+kubectl apply -f k8s/shop/ingress.yaml
 kubectl rollout status deployment/shop --namespace shop --timeout=5m
 ```
 
 ---
 
 ## Components
+
+### StorageClass
+
+**File:** `k8s/storageclass.yaml`
+
+```yaml
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+```
+
+On EKS with Kubernetes 1.27 or later, the legacy in-tree `kubernetes.io/aws-ebs` provisioner is removed. PVCs will stay `Pending` indefinitely if you use a StorageClass that references it. The `gp2-csi` StorageClass uses the `ebs.csi.aws.com` provisioner from the `aws-ebs-csi-driver` EKS addon.
+
+**Installing the EBS CSI driver addon (one-time, cluster-level):**
+
+```bash
+# Enable OIDC (required for the addon's IAM role)
+eksctl utils associate-iam-oidc-provider \
+  --cluster shop-cluster --region sa-east-1 --approve
+
+# Create the IAM service account with the required policy
+eksctl create iamserviceaccount \
+  --name ebs-csi-controller-sa \
+  --namespace kube-system \
+  --cluster shop-cluster \
+  --region sa-east-1 \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --approve \
+  --role-name AmazonEKS_EBS_CSI_DriverRole
+
+# Install the addon
+aws eks create-addon \
+  --cluster-name shop-cluster \
+  --addon-name aws-ebs-csi-driver \
+  --region sa-east-1 \
+  --service-account-role-arn $(aws iam get-role \
+      --role-name AmazonEKS_EBS_CSI_DriverRole \
+      --query Role.Arn --output text)
+```
+
+`volumeBindingMode: WaitForFirstConsumer` delays EBS volume creation until a pod is scheduled on a specific node, ensuring the volume is created in the same Availability Zone as the node.
+
+---
 
 ### MongoDB StatefulSet
 
@@ -209,11 +284,15 @@ args:
   - --bind_ip_all
 ```
 
-This mirrors exactly what `scripts/mongo-init.sh` does in Docker Compose via `exec docker-entrypoint.sh mongod ...`.
-
 #### Persistent storage
 
-Each pod gets a 10 Gi `PersistentVolumeClaim` via `volumeClaimTemplates`. These are provisioned automatically by the cluster's default `StorageClass` (e.g. `gp2` on EKS, `standard` on GKE). Data survives pod restarts and rescheduling.
+Each pod gets a 10 Gi `PersistentVolumeClaim` with `storageClassName: gp2-csi`. The EBS CSI driver provisions an EBS volume automatically when the pod is scheduled.
+
+> **StatefulSet VolumeClaimTemplate immutability:** `volumeClaimTemplates` cannot be edited in-place. To change `storageClassName` on an existing StatefulSet, delete it with `--cascade=orphan` (keeps PVCs and their data intact), then reapply:
+> ```bash
+> kubectl delete statefulset mongo --namespace shop --cascade=orphan
+> kubectl apply -f k8s/mongodb/statefulset.yaml
+> ```
 
 ---
 
@@ -257,6 +336,12 @@ kubectl get job mongodb-rs-init --namespace shop
 # Check Job logs
 kubectl logs -l job-name=mongodb-rs-init --namespace shop
 ```
+
+> **Job pods capture env vars at creation time.** If the job pod started while `mongodb-credentials` contained wrong values, it will keep failing even after the secret is fixed. Delete the Job and reapply to create a fresh pod:
+> ```bash
+> kubectl delete job mongodb-rs-init --namespace shop
+> kubectl apply -f k8s/mongodb/rs-init-job.yaml
+> ```
 
 After the Job completes:
 - `mongo-0` becomes primary
@@ -329,8 +414,6 @@ A pod can be alive (JVM running, responds to liveness) but not ready (MongoDB is
 - The pod is NOT restarted, because the JVM itself is fine
 - Once MongoDB recovers, readiness passes and traffic resumes automatically
 
-With a single shared probe, the pod would be restarted unnecessarily.
-
 ---
 
 ### ConfigMap
@@ -355,35 +438,34 @@ zipkin  → zipkin.shop.svc.cluster.local  → <ClusterIP>
 
 ---
 
-### Secret
-
-**File:** `k8s/shop/secret.yaml`
-
-Contains placeholder values that must be replaced before the first apply. In practice, the cluster admin creates these secrets with `kubectl create secret` (see [One-Time Cluster Setup](#one-time-cluster-setup)) so the YAML file in the repo only documents what keys are expected.
-
-> **Never commit real secrets to Git.** The placeholder values in `shop/secret.yaml` and `mongodb/credentials-secret.yaml` are documentation only.
-
----
-
-### Service
-
-**File:** `k8s/shop/service.yaml`
-
-A `ClusterIP` Service that routes traffic to any shop pod on port `8080`, exposed internally as port `80`. The Ingress sends traffic here.
-
----
-
 ### Ingress
 
 **File:** `k8s/shop/ingress.yaml`
 
-An nginx `Ingress` that routes external HTTP traffic to the shop Service:
+An nginx `Ingress` that routes external HTTP traffic to the shop Service. The current configuration has no `host:` filter and accepts requests for **any hostname**, which allows direct access via the load balancer URL without needing a custom domain or DNS setup:
 
 ```
-shop.example.com  →  shop Service :80  →  shop pods :8080
+http://<load-balancer-hostname>/swagger-ui/index.html
+http://<load-balancer-hostname>/actuator/health
 ```
 
-Change the `host` field to your actual domain before applying. For TLS, add a `tls` section and a `cert-manager` annotation:
+When you have a real domain, add a `host:` field to the rule and update the DNS CNAME to point to the load balancer hostname:
+
+```yaml
+rules:
+  - host: shop.yourdomain.com
+    http:
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: shop
+              port:
+                number: 80
+```
+
+For TLS, add a `tls` section and a `cert-manager` annotation:
 
 ```yaml
 metadata:
@@ -394,10 +476,9 @@ spec:
     - hosts:
         - shop.yourdomain.com
       secretName: shop-tls
-  rules:
-    - host: shop.yourdomain.com
-      ...
 ```
+
+> **Host mismatch causes 404:** If a `host:` value is set in the Ingress but your browser or `curl` sends a different `Host` header (e.g., the raw load balancer hostname), nginx returns 404. Either remove the `host:` field for development, or add the LB hostname to `/etc/hosts` pointing to its IP.
 
 ---
 
@@ -444,19 +525,69 @@ If the shop app used the regular `mongo` ClusterIP service, the driver would con
 
 ## CI/CD Integration
 
-The Jenkins `Deploy to Kubernetes` stage:
+The Jenkins `Deploy to Kubernetes` stage authenticates using IAM (no kubeconfig file stored in Jenkins), then fetches secrets from AWS Secrets Manager at deploy time and upserts them idempotently into the cluster:
 
 ```groovy
-withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
-    sh """
-        sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
-            k8s/shop/deployment.yaml | kubectl apply -f -
+stage('Deploy to Kubernetes') {
+    steps {
+        sh """
+            aws eks update-kubeconfig \
+                --name ${EKS_CLUSTER} \
+                --region ${AWS_REGION}
 
-        kubectl apply -f k8s/shop/configmap.yaml
-        kubectl apply -f k8s/shop/service.yaml
-        kubectl apply -f k8s/shop/ingress.yaml
-    """
-    sh "kubectl rollout status deployment/shop -n shop --timeout=5m"
+            MONGO_USER=\$(aws secretsmanager get-secret-value \
+                --secret-id shop/mongo-user \
+                --query SecretString --output text --region ${AWS_REGION})
+            MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
+                --secret-id shop/mongo-password \
+                --query SecretString --output text --region ${AWS_REGION})
+            ADMIN_PASSWORD=\$(aws secretsmanager get-secret-value \
+                --secret-id shop/admin-password \
+                --query SecretString --output text --region ${AWS_REGION})
+            JWT_SECRET=\$(aws secretsmanager get-secret-value \
+                --secret-id shop/jwt-secret \
+                --query SecretString --output text --region ${AWS_REGION})
+            KEYFILE=\$(aws secretsmanager get-secret-value \
+                --secret-id shop/mongodb-keyfile \
+                --query SecretString --output text --region ${AWS_REGION})
+
+            kubectl create secret generic mongodb-credentials \
+                --namespace shop \
+                --from-literal=username="\${MONGO_USER}" \
+                --from-literal=password="\${MONGO_PASSWORD}" \
+                --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+            kubectl create secret generic mongodb-keyfile \
+                --namespace shop \
+                --from-literal=keyfile="\${KEYFILE}" \
+                --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+            kubectl create secret generic shop-secret \
+                --namespace shop \
+                --from-literal=JWT_SECRET="\${JWT_SECRET}" \
+                --from-literal=ADMIN_PASSWORD="\${ADMIN_PASSWORD}" \
+                --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
+                --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+            sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
+                k8s/shop/deployment.yaml | kubectl apply -f -
+
+            kubectl apply -f k8s/shop/configmap.yaml
+            kubectl apply -f k8s/shop/service.yaml
+            kubectl apply -f k8s/shop/ingress.yaml
+        """
+        sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
+    }
+    post {
+        failure {
+            sh """
+                aws eks update-kubeconfig \
+                    --name ${EKS_CLUSTER} \
+                    --region ${AWS_REGION}
+                kubectl rollout undo deployment/shop --namespace shop || true
+            """
+        }
+    }
 }
 ```
 
@@ -470,6 +601,8 @@ git push
   → Docker image built and pushed:
       nelsonvillam/shop:42      ← pinned build tag
       nelsonvillam/shop:latest  ← floating alias (not used in K8s)
+  → aws eks update-kubeconfig (IAM auth, no stored kubeconfig file)
+  → Secrets fetched from AWS Secrets Manager, upserted into cluster
   → sed rewrites deployment.yaml: image: ...shop:42
   → kubectl apply → K8s creates new ReplicaSet
   → Rolling update: new pods start, pass readiness probes
@@ -478,13 +611,15 @@ git push
   → On failure: kubectl rollout undo restores previous ReplicaSet
 ```
 
-### Credential required in Jenkins
+### Jenkins IAM requirements
 
-| Credential ID | Type | Purpose |
-|---|---|---|
-| `k8s-kubeconfig` | Secret file | Authenticates `kubectl` with the cluster |
+The IAM user or role running Jenkins needs:
 
-Add it under **Manage Jenkins → Credentials → Global → Add Credentials → Secret file**.
+| Permission | Resource |
+|---|---|
+| `eks:DescribeCluster` | The cluster ARN |
+| `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` | `arn:aws:secretsmanager:<region>:<account>:secret:shop/*` |
+| Entry in cluster `aws-auth` ConfigMap | Allows `kubectl` operations |
 
 ### Why `:latest` is replaced before apply
 
@@ -562,19 +697,28 @@ kubectl get pods --namespace shop --watch
 kubectl logs --namespace shop -l app=shop -f
 
 # Connect to mongo-0 with mongosh
-kubectl exec --namespace shop -it mongo-0 -- \
-  mongosh -u <user> -p <password> --authenticationDatabase admin
+kubectl exec --namespace shop -it mongo-0 -- mongosh \
+  -u <user> -p <password> --authenticationDatabase admin
 
-# Check replica set status
-kubectl exec --namespace shop -it mongo-0 -- \
-  mongosh -u <user> -p <password> --authenticationDatabase admin \
-  --eval "rs.status()"
+# Check replica set status (quick summary)
+kubectl exec --namespace shop mongo-0 -- \
+  mongosh --quiet --eval "rs.status().members.forEach(m => print(m.name, m.stateStr))"
 
 # Describe a pod (shows events, probe failures, resource pressure)
 kubectl describe pod mongo-0 --namespace shop
 
 # Check RS init Job outcome
 kubectl logs -l job-name=mongodb-rs-init --namespace shop
+
+# Restart shop pods (forces pods to pick up updated secret values)
+kubectl rollout restart deployment/shop --namespace shop
+
+# Forward Zipkin UI locally
+kubectl port-forward svc/zipkin 9411:9411 --namespace shop
+# Then open: http://localhost:9411
+
+# View cluster events sorted by time
+kubectl get events --namespace shop --sort-by='.lastTimestamp'
 ```
 
 ---
@@ -585,9 +729,15 @@ kubectl logs -l job-name=mongodb-rs-init --namespace shop
 |---|---|---|
 | `mongo-0` pod stuck in `Init:CrashLoopBackOff` | keyFile permissions not fixed | Check init container logs: `kubectl logs mongo-0 -c keyfile-init -n shop` |
 | `mongo-1` / `mongo-2` not joining RS | keyFile mismatch between pods | All pods must use the same Secret; recreate `mongodb-keyfile` secret and restart pods |
-| Shop pods stuck in `0/1 Running` | Readiness probe failing | Check actuator health: `kubectl exec -it <pod> -n shop -- curl localhost:8080/actuator/health` |
-| `SPRING_DATA_MONGODB_URI` not set | Secret not created before deploy | Run the one-time setup commands in [One-Time Cluster Setup](#one-time-cluster-setup) |
-| RS init Job keeps retrying | mongo-0 not ready yet | Wait for `kubectl wait --for=condition=ready pod/mongo-0 -n shop --timeout=120s` before applying the Job |
-| Rolling update stuck | New pods not passing readiness | The pipeline times out after 5m and `kubectl rollout undo` runs automatically |
-| Ingress returns 404 | Host header mismatch | Ensure the `host` in `ingress.yaml` matches your request's `Host` header or domain |
-| `kubectl` can't connect | Wrong kubeconfig context | Run `kubectl config get-contexts` and switch with `kubectl config use-context <name>` |
+| MongoDB crash: `invalid char in key file` | keyfile secret contains `CHANGE_ME` placeholder | Recreate secret from AWS Secrets Manager; see [One-Time Cluster Setup](#one-time-cluster-setup) |
+| Shop pods stuck in `0/1 Running` | Readiness probe failing | Check: `kubectl exec -it <pod> -n shop -- curl localhost:8080/actuator/health` |
+| `SPRING_DATA_MONGODB_URI` not set | `shop-secret` not created before deploy | Run the secret creation commands in [One-Time Cluster Setup](#one-time-cluster-setup) |
+| RS init Job keeps retrying | mongo-0 not ready, or Job pod started with wrong credentials | Wait for mongo-0; if credentials were wrong at pod start, delete Job and reapply |
+| Secrets reset to `CHANGE_ME` after `kubectl apply -k` | Secret placeholder YAMLs were included in `kustomization.yaml` | Remove secret files from `kustomization.yaml` — they must stay excluded |
+| PVCs stuck in `Pending` | EBS CSI driver not installed, or StorageClass uses removed provisioner | Install `aws-ebs-csi-driver` addon; confirm StorageClass uses `ebs.csi.aws.com` |
+| StatefulSet won't update `storageClassName` | `volumeClaimTemplates` is immutable | Delete StatefulSet with `--cascade=orphan`, then reapply |
+| Rolling update stuck | New pods not passing readiness | Pipeline times out after 5m and `kubectl rollout undo` runs automatically |
+| Ingress returns 404 | `host:` in Ingress doesn't match request's `Host` header | Remove `host:` for direct LB access; or add your domain to `/etc/hosts` |
+| Swagger UI not loading in browser | Host mismatch — browser sends LB hostname, Ingress expects a different `host:` | Remove `host:` from Ingress rule (already done in this setup) |
+| `kubectl` can't connect | Wrong kubeconfig context | Run `aws eks update-kubeconfig --name shop-cluster --region sa-east-1` |
+| `secretsmanager:GetSecretValue` denied | IAM policy not attached | Attach policy granting `GetSecretValue` on `arn:aws:secretsmanager:<region>:<account>:secret:shop/*` |

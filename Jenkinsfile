@@ -10,8 +10,8 @@ pipeline {
         IMAGE_TAG         = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
         SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
-        EKS_CLUSTER       = 'shop-cluster'   // replace with your EKS cluster name
-        AWS_REGION        = 'us-east-1'      // replace with your cluster region
+        EKS_CLUSTER       = 'shop-cluster'
+        AWS_REGION        = 'sa-east-1'
     }
 
     stages {

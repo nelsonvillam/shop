@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,7 +38,8 @@ public class OrderChangeStreamService {
     private final LinkedBlockingQueue<OrderChangeEvent> eventQueue = new LinkedBlockingQueue<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(
             r -> new Thread(r, "order-change-stream"));
-    private volatile MongoCursor<ChangeStreamDocument<Document>> cursor;
+    private final AtomicReference<MongoCursor<ChangeStreamDocument<Document>>> cursorRef =
+            new AtomicReference<>();
 
     public OrderChangeStreamService(
             MongoClient mongoClient,
@@ -52,24 +54,28 @@ public class OrderChangeStreamService {
         executor.submit(this::listen);
     }
 
+    @SuppressWarnings("PMD.CloseResource")
     private void listen() {
         try {
             List<Bson> pipeline = List.of(
                     Aggregates.match(Filters.in("operationType", "insert", "update", "replace")));
 
-            cursor = mongoClient
+            cursorRef.set(mongoClient
                     .getDatabase(databaseName)
                     .getCollection("orders")
                     .watch(pipeline)
                     .fullDocument(FullDocument.UPDATE_LOOKUP)
-                    .iterator();
+                    .iterator());
 
             log.info("Order change stream listener ready");
 
+            MongoCursor<ChangeStreamDocument<Document>> c = cursorRef.get();
             while (!Thread.currentThread().isInterrupted()) {
-                ChangeStreamDocument<Document> change = cursor.next();
+                ChangeStreamDocument<Document> change = c.next();
                 OrderChangeEvent event = toEvent(change);
-                eventQueue.offer(event);
+                if (!eventQueue.offer(event)) {
+                    log.warn("Event queue full, dropping change stream event: {}", event.orderId());
+                }
                 broadcast(event);
             }
         } catch (Exception e) {
@@ -119,7 +125,7 @@ public class OrderChangeStreamService {
     }
 
     public boolean isListening() {
-        return cursor != null;
+        return cursorRef.get() != null;
     }
 
     public OrderChangeEvent pollEvent(long timeout, TimeUnit unit) throws InterruptedException {
@@ -130,7 +136,7 @@ public class OrderChangeStreamService {
     @SuppressWarnings("PMD.CloseResource")
     public void shutdown() {
         executor.shutdownNow();
-        MongoCursor<ChangeStreamDocument<Document>> c = cursor;
+        MongoCursor<ChangeStreamDocument<Document>> c = cursorRef.getAndSet(null);
         if (c != null) {
             c.close();
         }

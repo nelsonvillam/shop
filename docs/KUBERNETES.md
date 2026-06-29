@@ -45,20 +45,34 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 ║  │                                                      │                    ║
 ║  │  ┌────────────────────────────────────────────────┐  │                    ║
 ║  │  │  nginx Ingress Controller          (port 80)  │  │                    ║
-║  │  │                                                │  │                    ║
 ║  │  │  NO host filter — accepts any hostname         │  │                    ║
-║  │  │  path: /  →  shop Service : 80                 │  │                    ║
-║  │  │                                                │  │                    ║
-║  │  │  ✗ No API Gateway                              │  │                    ║
-║  │  │  ✗ No TLS termination (HTTP only, local)       │  │                    ║
-║  │  │  ✗ No rate limiting                            │  │                    ║
+║  │  │  path: /  →  gateway Service : 80              │  │                    ║
 ║  │  │  ✓ Path-based routing                          │  │                    ║
-║  │  │  ✓ Load balances across shop replicas          │  │                    ║
+║  │  │  ✗ No TLS termination (HTTP only, local)       │  │                    ║
 ║  │  └────────────────┬───────────────────────────────┘  │                    ║
 ║  └───────────────────│──────────────────────────────────┘                    ║
 ║                      │                                                        ║
+║         ┌────────────▼───────────┐                                            ║
+║         │  gateway Service       │  ClusterIP :80                            ║
+║         └────────────┬───────────┘                                            ║
+║                      │                                                        ║
+║         ┌────────────▼───────────────────────────┐                           ║
+║         │  Spring Cloud Gateway pod   :8080      │                           ║
+║         │                                        │                           ║
+║         │  GlobalFilter: JwtAuthenticationFilter │                           ║
+║         │                                        │                           ║
+║         │  PUBLIC (no token required):           │                           ║
+║         │    /auth/**   /actuator/**             │                           ║
+║         │    /swagger-ui/**  /v3/api-docs/**     │                           ║
+║         │                                        │                           ║
+║         │  PROTECTED (Bearer token required):    │                           ║
+║         │    validates JWT → adds X-User-Name    │                           ║
+║         │    header → forwards to shop           │                           ║
+║         │    invalid/missing token → 401         │                           ║
+║         └────────────┬───────────────────────────┘                           ║
+║                      │  routes /**  →  http://shop:80                        ║
 ║              ┌───────▼────────┐                                               ║
-║              │  shop Service  │  ClusterIP  10.96.46.105:80                  ║
+║              │  shop Service  │  ClusterIP :80                               ║
 ║              │  (round-robin) │                                               ║
 ║              └───────┬────────┘                                               ║
 ║                      │                                                        ║
@@ -66,20 +80,17 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 ║            ▼                    ▼                                             ║
 ║   ┌─────────────────┐  ┌─────────────────┐                                   ║
 ║   │  shop pod 1     │  │  shop pod 2     │  Spring Boot :8080                ║
-║   │                 │  │                 │                                    ║
-║   │  /actuator/     │  │  /actuator/     │  ← liveness probe (kubelet)       ║
+║   │  /actuator/     │  │  /actuator/     │  ← liveness probe  (kubelet)      ║
 ║   │   health/live   │  │   health/live   │                                    ║
 ║   │  /actuator/     │  │  /actuator/     │  ← readiness probe (kubelet)      ║
 ║   │   health/ready  │  │   health/ready  │                                    ║
 ║   └────┬──────┬─────┘  └────┬──────┬────┘                                    ║
-║        │      │              │      │                                         ║
 ║        │      └──────────────┘      │                                         ║
 ║        │             │              │                                         ║
 ║   ┌────▼────┐   ┌────▼──────────────▼────┐   ┌──────────┐                   ║
 ║   │  redis  │   │  mongo Service         │   │  zipkin  │                   ║
 ║   │ :6379   │   │  (headless per-pod DNS)│   │  :9411   │                   ║
 ║   └─────────┘   └────────────┬───────────┘   └──────────┘                   ║
-║                               │                                               ║
 ║                ┌──────────────┼──────────────┐                               ║
 ║                ▼              ▼              ▼                               ║
 ║          ┌──────────┐  ┌──────────┐  ┌──────────┐                           ║
@@ -87,7 +98,6 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 ║          │ PRIMARY  │  │SECONDARY │  │SECONDARY │                            ║
 ║          │  10 Gi   │  │  10 Gi   │  │  10 Gi   │  PersistentVolumes        ║
 ║          └──────────┘  └──────────┘  └──────────┘                           ║
-║                                                                               ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
                                           ▲
@@ -95,7 +105,6 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
                                           │
                               ┌───────────┴──────────┐
                               │  AWS Secrets Manager  │  sa-east-1
-                              │                       │
                               │  shop/mongo-user      │
                               │  shop/mongo-password  │
                               │  shop/admin-password  │
@@ -112,20 +121,29 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
                               └───────────────────────┘
 ```
 
-| Layer | What's there | What's missing (local) |
+| Layer | What's there | Notes |
 |---|---|---|
-| Entry | `kubectl port-forward` (local) / Load Balancer (EKS) | Real LB on Docker Desktop |
-| Reverse proxy | nginx Ingress Controller | TLS, rate limiting, auth |
-| API Gateway | None — nginx does path routing only | AWS API Gateway / Kong / Traefik |
+| Entry | `kubectl port-forward` (local) / Load Balancer (EKS) | Docker Desktop has no real LB |
+| Reverse proxy | nginx Ingress Controller | Path routing, no TLS locally |
+| **API Gateway** | **Spring Cloud Gateway** | **JWT validation, X-User-Name header forwarding** |
 | App tier | 2 shop pods, round-robin via ClusterIP Service | |
 | DB tier | MongoDB 3-node replica set (1 PRIMARY, 2 SECONDARY) | |
-| Secret sync | ESO → AWS Secrets Manager | |
+| Secret sync | ESO → AWS Secrets Manager | Refreshes every 1h |
 
 ---
 
 ## Directory Structure
 
 ```
+gateway/                            # Spring Cloud Gateway (separate Spring Boot project)
+├── src/main/java/com/example/gateway/
+│   ├── GatewayApplication.java
+│   └── filter/
+│       └── JwtAuthenticationFilter.java  # GlobalFilter: validates JWT, adds X-User-Name
+├── src/main/resources/application.yml    # route: /** → http://shop:80
+├── build.gradle
+└── Dockerfile
+
 k8s/
 ├── kustomization.yaml              # delegates to overlays/eks (used by CI/CD)
 ├── base/                           # shared resources for all environments
@@ -135,6 +153,9 @@ k8s/
 │   │   ├── mongodb-credentials-es.yaml  # ExternalSecret — syncs username + password
 │   │   ├── mongodb-keyfile-es.yaml      # ExternalSecret — syncs keyfile
 │   │   └── shop-secret-es.yaml          # ExternalSecret — syncs JWT, admin pw, assembles URI
+│   ├── gateway/
+│   │   ├── deployment.yaml         # 1 replica, reads JWT_SECRET from shop-secret
+│   │   └── service.yaml            # ClusterIP port 80 → 8080
 │   ├── mongodb/
 │   │   ├── statefulset.yaml        # 3-node replica set with keyFile auth
 │   │   ├── headless-service.yaml   # stable DNS names for each pod
@@ -146,7 +167,7 @@ k8s/
 │       ├── configmap.yaml          # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
 │       ├── deployment.yaml         # 2 replicas, liveness + readiness probes
 │       ├── service.yaml            # ClusterIP port 80 → 8080
-│       └── ingress.yaml            # nginx Ingress, accepts any hostname
+│       └── ingress.yaml            # nginx Ingress → gateway (not shop directly)
 └── overlays/
     ├── local/                      # Docker Desktop
     │   ├── kustomization.yaml
@@ -524,9 +545,74 @@ Zipkin is stateless — traces are stored in memory and lost on pod restart. For
 
 ---
 
+### Spring Cloud Gateway
+
+**Files:** `gateway/`, `k8s/base/gateway/`
+
+Spring Cloud Gateway is a reactive Spring Boot application that acts as the single entry point for all external traffic. It runs in the cluster as its own pod and routes every request to the shop service after optionally validating a JWT.
+
+#### Request flow
+
+```
+Client request
+    │
+    ▼
+JwtAuthenticationFilter (GlobalFilter, order = -1)
+    │
+    ├─ path is public? (/auth/**, /actuator/**, /swagger-ui/**, /v3/api-docs/**)
+    │       └─ forward as-is → shop
+    │
+    └─ protected path
+            │
+            ├─ Authorization: Bearer <token> present?
+            │       NO  → 401 immediately (shop never receives the request)
+            │
+            └─ YES → validate token signature + expiry
+                        │
+                        ├─ invalid → 401
+                        │
+                        └─ valid  → add header X-User-Name: <subject>
+                                        → forward to shop
+```
+
+#### JWT validation
+
+The gateway uses the same key derivation as the shop service (`Keys.hmacShaKeyFor(secret.getBytes(UTF_8))`) so both can validate tokens issued by `/auth/login`. The `JWT_SECRET` value is injected from the existing `shop-secret` Kubernetes Secret — no separate secret is needed.
+
+#### Why a gateway instead of relying on shop's own security?
+
+| Without gateway | With gateway |
+|---|---|
+| Every request hits shop, even invalid ones | Invalid tokens rejected at the gateway — shop never wakes up |
+| Scaling shop means scaling auth too | Auth logic lives in one place; shop focuses on business logic |
+| Hard to add rate limiting, tracing headers, or A/B routing | Gateway is the single extension point for cross-cutting concerns |
+
+#### Public vs protected paths
+
+| Pattern | Auth required | Reason |
+|---|---|---|
+| `/auth/**` | No | Login and register endpoints — they issue the token |
+| `/actuator/**` | No | Health probes hit by kubelet from inside the cluster |
+| `/swagger-ui/**`, `/v3/api-docs/**` | No | Swagger UI must load before the user has a token |
+| Everything else | Yes | All business API endpoints |
+
+#### Routing
+
+All traffic is forwarded to `http://shop:80` (Kubernetes DNS resolves `shop` to the shop ClusterIP Service within the namespace). There is one catch-all route:
+
+```yaml
+routes:
+  - id: shop
+    uri: http://shop:80
+    predicates:
+      - Path=/**
+```
+
+---
+
 ### Shop Deployment
 
-**File:** `k8s/shop/deployment.yaml`
+**File:** `k8s/base/shop/deployment.yaml`
 
 Runs 2 replicas of the `nelsonvillam/shop` image. Each build is tagged with the Jenkins build number (e.g. `nelsonvillam/shop:42`). The Jenkins pipeline injects the exact tag before applying — `:latest` never lands in the cluster.
 
@@ -722,19 +808,23 @@ stage('Deploy to Kubernetes') {
 git push
   → Jenkins pipeline triggered
   → Tests, lint, SonarQube quality gate
-  → Gradle bootJar
-  → Docker image built and pushed:
-      nelsonvillam/shop:42      ← pinned build tag
-      nelsonvillam/shop:latest  ← floating alias (not used in K8s)
+  → Gradle bootJar (shop)
+  → Docker Build & Push (parallel):
+      shop:    nelsonvillam/shop:42      ← pinned build tag
+               nelsonvillam/shop:latest  ← floating alias (not used in K8s)
+      gateway: cd gateway && ./gradlew bootJar
+               nelsonvillam/gateway:42
+               nelsonvillam/gateway:latest
   → kubectl apply -k k8s/overlays/local/ (creates ExternalSecrets + SecretStore)
   → aws-credentials k8s Secret upserted from Jenkins AWS env vars
   → ESO syncs 3 secrets from AWS Secrets Manager → Kubernetes Secrets
-  → sed rewrites deployment.yaml: image: ...shop:42
-  → kubectl apply → K8s creates new ReplicaSet
-  → Rolling update: new pods start, pass readiness probes
+  → sed rewrites shop deployment:    image: ...shop:42
+  → sed rewrites gateway deployment: image: ...gateway:42
+  → kubectl apply → K8s creates new ReplicaSets for both
+  → Rolling updates: new pods start, pass readiness probes
   → Old pods terminated
-  → kubectl rollout status blocks pipeline until complete
-  → On failure: kubectl rollout undo restores previous ReplicaSet
+  → kubectl rollout status (shop + gateway) blocks pipeline until complete
+  → On failure: kubectl rollout undo for both shop and gateway
 ```
 
 ### Jenkins IAM requirements
@@ -867,4 +957,7 @@ kubectl get events --namespace shop --sort-by='.lastTimestamp'
 | StatefulSet won't update `storageClassName` | `volumeClaimTemplates` is immutable | Delete StatefulSet with `--cascade=orphan`, then reapply |
 | Rolling update stuck | New pods not passing readiness | Pipeline times out after 5m and `kubectl rollout undo` runs automatically |
 | Ingress returns 404 | `host:` in Ingress doesn't match request's `Host` header | Remove `host:` for direct LB access; or add your domain to `/etc/hosts` |
+| All requests return 401 unexpectedly | Gateway pod not ready or `JWT_SECRET` not synced | `kubectl get pods -n shop` — check gateway pod status; verify `shop-secret` ExternalSecret is `SecretSynced` |
+| Gateway returns 401 but token is valid | Key derivation mismatch | Gateway and shop both use raw UTF-8 bytes (`Keys.hmacShaKeyFor(secret.getBytes(UTF_8))`). Confirm `JWT_SECRET` in `shop-secret` is a plain string, not Base64. |
+| Swagger accessible but API calls blocked | Token not being sent | In Swagger UI click **Authorize** 🔒 → paste token → click **Authorize** before executing requests |
 | `kubectl` can't connect to EKS | Wrong kubeconfig context | `aws eks update-kubeconfig --name shop-cluster --region sa-east-1` |

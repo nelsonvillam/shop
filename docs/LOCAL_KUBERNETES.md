@@ -48,12 +48,14 @@ The script:
 1. Switches kubectl to the `docker-desktop` context
 2. Installs **External Secrets Operator** via Helm (skips if already installed)
 3. Installs nginx Ingress controller (skips if already installed)
-4. Applies all Kubernetes manifests via `k8s/overlays/local/` — this creates the `ExternalSecret` and `SecretStore` resources
+4. Applies all Kubernetes manifests via `k8s/overlays/local/` — this creates the `ExternalSecret`, `SecretStore`, gateway, and shop resources
 5. Creates the `aws-credentials` Kubernetes Secret from your local AWS CLI config — ESO uses this to authenticate against AWS Secrets Manager
 6. Waits for ESO to sync all three secrets (`mongodb-credentials`, `mongodb-keyfile`, `shop-secret`) from AWS
 7. Waits for `mongo-0` to be ready, then initialises the replica set
 8. Waits for the shop deployment to roll out
 9. Starts a port-forward tunnel so the app is reachable at `localhost:9090`
+
+> The **Spring Cloud Gateway** pod starts automatically as part of step 4. All external traffic flows through it before reaching the shop service.
 
 Total time: ~4–6 minutes (first run installs ESO and pulls images).
 
@@ -136,6 +138,8 @@ kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 9090:80 &
 4. Click **Authorize** (🔒 top right) → paste the token (no `Bearer` prefix needed — Swagger adds it)
 5. All protected endpoints are now unlocked
 
+> `/auth/**` and `/swagger-ui/**` are public — the **Spring Cloud Gateway** lets them through without a token. All other paths require a valid Bearer token; the gateway returns `401` before the request ever reaches the shop service.
+
 ### Zipkin
 
 ```bash
@@ -204,11 +208,17 @@ kubectl get pods -n shop --watch
 # See pods across ALL namespaces
 kubectl get pods --all-namespaces
 
+# Tail gateway logs (JWT validation decisions, routing errors)
+kubectl logs -n shop -l app=gateway -f
+
 # Tail shop app logs
 kubectl logs -n shop -l app=shop -f
 
 # Tail last 100 lines without following
 kubectl logs -n shop -l app=shop --tail=100
+
+# Restart gateway (e.g. after JWT_SECRET rotation)
+kubectl rollout restart deployment/gateway -n shop
 
 # Check ESO sync status
 kubectl get externalsecrets -n shop
@@ -278,5 +288,7 @@ kubectl delete namespace external-secrets
 | Ingress returns 404 | nginx controller not running | `kubectl get pods -n ingress-nginx` — reinstall if missing |
 | mongo-0 crash: `invalid char in key file` | keyfile synced incorrectly | Check `kubectl describe externalsecret mongodb-keyfile -n shop` |
 | Image not found | Image never built/pushed | Run `./gradlew bootJar && docker build -t nelsonvillam/shop:latest .` |
+| All requests return 401 | Gateway pod not ready or `JWT_SECRET` not synced | `kubectl get pods -n shop` — check gateway; verify `kubectl get externalsecrets -n shop` shows `SecretSynced` |
 | Login returns 401 | Sending Authorization header on login | Remove the `Authorization` header — `/auth/login` is public and issues the token |
 | Token expired | Tokens last 15 minutes | Re-run `POST /auth/login` to get a fresh token |
+| Gateway pod in `CrashLoopBackOff` | `JWT_SECRET` env var missing | ESO hasn't synced `shop-secret` yet — wait for `SecretSynced` then restart gateway |

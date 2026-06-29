@@ -160,58 +160,66 @@ pipeline {
             // Secrets are managed by External Secrets Operator — fetched automatically
             // from AWS Secrets Manager via the aws-credentials k8s Secret.
             steps {
-                sh """
-                    # ── 1. Switch to local cluster ───────────────────────────────────
-                    kubectl config use-context docker-desktop
+                // Inject AWS credentials from Jenkins Credentials Manager.
+                // Create two "Secret text" credentials in Jenkins with these IDs:
+                //   aws-access-key-id     → your AWS_ACCESS_KEY_ID
+                //   aws-secret-access-key → your AWS_SECRET_ACCESS_KEY
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',     variable: 'CI_AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'CI_AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        # ── 1. Switch to local cluster ───────────────────────────────
+                        kubectl config use-context docker-desktop
 
-                    # ── 2. Apply manifests (includes ExternalSecret resources) ────────
-                    kubectl apply -k k8s/overlays/local/
+                        # ── 2. Apply manifests ────────────────────────────────────────
+                        kubectl apply -k k8s/overlays/local/
 
-                    # ── 3. Force-replace aws-credentials so ESO always gets fresh creds
-                    #       (replace, not apply — avoids "unchanged" on rotated tokens)
-                    set +x
-                    kubectl create secret generic aws-credentials \
-                        --namespace shop \
-                        --from-literal=access-key-id="\${AWS_ACCESS_KEY_ID}" \
-                        --from-literal=secret-access-key="\${AWS_SECRET_ACCESS_KEY}" \
-                        --from-literal=session-token="\${AWS_SESSION_TOKEN:-}" \
-                        --dry-run=client -o yaml | kubectl replace --force -f -
-                    set -x
-
-                    # ── 4. Kick ESO to re-sync immediately after credential refresh ───
-                    for es in mongodb-credentials mongodb-keyfile shop-secret; do
-                        kubectl annotate externalsecret/\$es \
+                        # ── 3. Force-replace aws-credentials (always fresh, no "unchanged")
+                        set +x
+                        kubectl create secret generic aws-credentials \
                             --namespace shop \
-                            force-sync=\$(date +%s) \
-                            --overwrite
-                    done
+                            --from-literal=access-key-id="\${CI_AWS_ACCESS_KEY_ID}" \
+                            --from-literal=secret-access-key="\${CI_AWS_SECRET_ACCESS_KEY}" \
+                            --from-literal=session-token="" \
+                            --dry-run=client -o yaml | kubectl replace --force -f -
+                        set -x
 
-                    # ── 5. Wait for ESO to sync all secrets from AWS ──────────────────
-                    for es in mongodb-credentials mongodb-keyfile shop-secret; do
-                        if ! kubectl wait externalsecret/\$es \
+                        # ── 4. Kick ESO to re-sync immediately ────────────────────────
+                        for es in mongodb-credentials mongodb-keyfile shop-secret; do
+                            kubectl annotate externalsecret/\$es \
                                 --namespace shop \
-                                --for=condition=Ready \
-                                --timeout=120s; then
-                            echo "=== SecretStore status ==="
-                            kubectl describe secretstore aws-secretsmanager -n shop || true
-                            echo "=== ExternalSecret \$es status ==="
-                            kubectl describe externalsecret/\$es -n shop || true
-                            exit 1
-                        fi
-                    done
+                                force-sync=\$(date +%s) \
+                                --overwrite
+                        done
 
-                    # ── 6. Deploy with pinned image tags ─────────────────────────────
-                    sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
-                        k8s/base/shop/deployment.yaml | kubectl apply -f -
+                        # ── 5. Wait for ESO to sync all secrets ───────────────────────
+                        for es in mongodb-credentials mongodb-keyfile shop-secret; do
+                            if ! kubectl wait externalsecret/\$es \
+                                    --namespace shop \
+                                    --for=condition=Ready \
+                                    --timeout=120s; then
+                                echo "=== SecretStore status ==="
+                                kubectl describe secretstore aws-secretsmanager -n shop || true
+                                echo "=== ExternalSecret \$es status ==="
+                                kubectl describe externalsecret/\$es -n shop || true
+                                exit 1
+                            fi
+                        done
 
-                    sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
-                        k8s/base/gateway/deployment.yaml | kubectl apply -f -
+                        # ── 6. Deploy with pinned image tags ──────────────────────────
+                        sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
+                            k8s/base/shop/deployment.yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/base/shop/configmap.yaml
-                    kubectl apply -f k8s/base/shop/service.yaml
-                    kubectl apply -f k8s/base/shop/ingress.yaml
-                    kubectl apply -f k8s/base/gateway/service.yaml
-                """
+                        sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
+                            k8s/base/gateway/deployment.yaml | kubectl apply -f -
+
+                        kubectl apply -f k8s/base/shop/configmap.yaml
+                        kubectl apply -f k8s/base/shop/service.yaml
+                        kubectl apply -f k8s/base/shop/ingress.yaml
+                        kubectl apply -f k8s/base/gateway/service.yaml
+                    """
+                }
 
                 sh """
                     kubectl rollout status deployment/shop --namespace shop --timeout=5m

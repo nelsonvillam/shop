@@ -167,25 +167,40 @@ pipeline {
                     # ── 2. Apply manifests (includes ExternalSecret resources) ────────
                     kubectl apply -k k8s/overlays/local/
 
-                    # ── 3. Upsert aws-credentials secret for ESO (no xtrace) ─────────
+                    # ── 3. Force-replace aws-credentials so ESO always gets fresh creds
+                    #       (replace, not apply — avoids "unchanged" on rotated tokens)
                     set +x
                     kubectl create secret generic aws-credentials \
                         --namespace shop \
                         --from-literal=access-key-id="\${AWS_ACCESS_KEY_ID}" \
                         --from-literal=secret-access-key="\${AWS_SECRET_ACCESS_KEY}" \
                         --from-literal=session-token="\${AWS_SESSION_TOKEN:-}" \
-                        --save-config --dry-run=client -o yaml | kubectl apply -f -
+                        --dry-run=client -o yaml | kubectl replace --force -f -
                     set -x
 
-                    # ── 4. Wait for ESO to sync all secrets from AWS ──────────────────
+                    # ── 4. Kick ESO to re-sync immediately after credential refresh ───
                     for es in mongodb-credentials mongodb-keyfile shop-secret; do
-                        kubectl wait externalsecret/\$es \
+                        kubectl annotate externalsecret/\$es \
                             --namespace shop \
-                            --for=condition=Ready \
-                            --timeout=60s
+                            force-sync=\$(date +%s) \
+                            --overwrite
                     done
 
-                    # ── 5. Deploy with pinned image tags ─────────────────────────────
+                    # ── 5. Wait for ESO to sync all secrets from AWS ──────────────────
+                    for es in mongodb-credentials mongodb-keyfile shop-secret; do
+                        if ! kubectl wait externalsecret/\$es \
+                                --namespace shop \
+                                --for=condition=Ready \
+                                --timeout=120s; then
+                            echo "=== SecretStore status ==="
+                            kubectl describe secretstore aws-secretsmanager -n shop || true
+                            echo "=== ExternalSecret \$es status ==="
+                            kubectl describe externalsecret/\$es -n shop || true
+                            exit 1
+                        fi
+                    done
+
+                    # ── 6. Deploy with pinned image tags ─────────────────────────────
                     sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
                         k8s/base/shop/deployment.yaml | kubectl apply -f -
 

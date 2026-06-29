@@ -5,6 +5,7 @@ kind: Kustomization
 # already provides the "standard" StorageClass).
 resources:
   - ../../base
+  - secret-store.yaml
 
 patches:
   # Replace gp2-csi (EKS EBS) with Docker Desktop's built-in StorageClass

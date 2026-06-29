@@ -5,6 +5,9 @@ kind: Kustomization
 # StorageClass is NOT included here — each overlay provides its own.
 resources:
   - namespace.yaml
+  - external-secrets/mongodb-credentials-es.yaml
+  - external-secrets/mongodb-keyfile-es.yaml
+  - external-secrets/shop-secret-es.yaml
   - mongodb/headless-service.yaml
   - mongodb/service.yaml
   - mongodb/statefulset.yaml

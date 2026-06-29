@@ -137,57 +137,35 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             // Deploys to the local Docker Desktop Kubernetes cluster.
-            // Secrets are fetched from AWS Secrets Manager on every build.
-            //
-            // To switch back to EKS: replace KUBE_CONTEXT with the EKS context
-            // name and add the aws eks update-kubeconfig step before the secret fetch.
+            // Secrets are managed by External Secrets Operator — fetched automatically
+            // from AWS Secrets Manager via the aws-credentials k8s Secret.
             steps {
                 sh """
                     # ── 1. Switch to local cluster ───────────────────────────────────
                     kubectl config use-context docker-desktop
 
-                    # ── 2 & 3. Fetch secrets and upsert into cluster (no xtrace) ─────
+                    # ── 2. Apply manifests (includes ExternalSecret resources) ────────
+                    kubectl apply -k k8s/overlays/local/
+
+                    # ── 3. Upsert aws-credentials secret for ESO (no xtrace) ─────────
                     set +x
-                    MONGO_USER=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/mongo-user \
-                        --query SecretString --output text --region ${AWS_REGION})
-
-                    MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/mongo-password \
-                        --query SecretString --output text --region ${AWS_REGION})
-
-                    ADMIN_PASSWORD=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/admin-password \
-                        --query SecretString --output text --region ${AWS_REGION})
-
-                    JWT_SECRET=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/jwt-secret \
-                        --query SecretString --output text --region ${AWS_REGION})
-
-                    KEYFILE=\$(aws secretsmanager get-secret-value \
-                        --secret-id shop/mongodb-keyfile \
-                        --query SecretString --output text --region ${AWS_REGION})
-
-                    kubectl create secret generic mongodb-credentials \
+                    kubectl create secret generic aws-credentials \
                         --namespace shop \
-                        --from-literal=username="\${MONGO_USER}" \
-                        --from-literal=password="\${MONGO_PASSWORD}" \
-                        --save-config --dry-run=client -o yaml | kubectl apply -f -
-
-                    kubectl create secret generic mongodb-keyfile \
-                        --namespace shop \
-                        --from-literal=keyfile="\${KEYFILE}" \
-                        --save-config --dry-run=client -o yaml | kubectl apply -f -
-
-                    kubectl create secret generic shop-secret \
-                        --namespace shop \
-                        --from-literal=JWT_SECRET="\${JWT_SECRET}" \
-                        --from-literal=ADMIN_PASSWORD="\${ADMIN_PASSWORD}" \
-                        --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
+                        --from-literal=access-key-id="\${AWS_ACCESS_KEY_ID}" \
+                        --from-literal=secret-access-key="\${AWS_SECRET_ACCESS_KEY}" \
+                        --from-literal=session-token="\${AWS_SESSION_TOKEN:-}" \
                         --save-config --dry-run=client -o yaml | kubectl apply -f -
                     set -x
 
-                    # ── 4. Deploy with pinned image tag ──────────────────────────────
+                    # ── 4. Wait for ESO to sync all secrets from AWS ──────────────────
+                    for es in mongodb-credentials mongodb-keyfile shop-secret; do
+                        kubectl wait externalsecret/\$es \
+                            --namespace shop \
+                            --for=condition=Ready \
+                            --timeout=60s
+                    done
+
+                    # ── 5. Deploy with pinned image tag ──────────────────────────────
                     sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
                         k8s/base/shop/deployment.yaml | kubectl apply -f -
 

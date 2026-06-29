@@ -6,11 +6,12 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME        = 'nelsonvillam/shop'
-        IMAGE_TAG         = "${env.BUILD_NUMBER}"
-        GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
-        SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
-        AWS_REGION        = 'sa-east-1'
+        IMAGE_NAME         = 'nelsonvillam/shop'
+        GATEWAY_IMAGE_NAME = 'nelsonvillam/gateway'
+        IMAGE_TAG          = "${env.BUILD_NUMBER}"
+        GRADLE_USER_HOME   = "${env.WORKSPACE}/.gradle"
+        SONAR_USER_HOME    = "${env.WORKSPACE}/.sonar"
+        AWS_REGION         = 'sa-east-1'
     }
 
     stages {
@@ -124,14 +125,31 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
-                sh """
-                    docker buildx build \
-                        --platform linux/amd64,linux/arm64 \
-                        -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                        -t ${IMAGE_NAME}:latest \
-                        --push \
-                        .
-                """
+                // Build shop and gateway images in parallel
+                parallel(
+                    shop: {
+                        sh """
+                            docker buildx build \
+                                --platform linux/amd64,linux/arm64 \
+                                -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                                -t ${IMAGE_NAME}:latest \
+                                --push \
+                                .
+                        """
+                    },
+                    gateway: {
+                        sh """
+                            cd gateway && \
+                            ./gradlew bootJar --no-daemon && \
+                            docker buildx build \
+                                --platform linux/amd64,linux/arm64 \
+                                -t ${GATEWAY_IMAGE_NAME}:${IMAGE_TAG} \
+                                -t ${GATEWAY_IMAGE_NAME}:latest \
+                                --push \
+                                .
+                        """
+                    }
+                )
             }
         }
 
@@ -165,21 +183,31 @@ pipeline {
                             --timeout=60s
                     done
 
-                    # ── 5. Deploy with pinned image tag ──────────────────────────────
+                    # ── 5. Deploy with pinned image tags ─────────────────────────────
                     sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
                         k8s/base/shop/deployment.yaml | kubectl apply -f -
+
+                    sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
+                        k8s/base/gateway/deployment.yaml | kubectl apply -f -
 
                     kubectl apply -f k8s/base/shop/configmap.yaml
                     kubectl apply -f k8s/base/shop/service.yaml
                     kubectl apply -f k8s/base/shop/ingress.yaml
+                    kubectl apply -f k8s/base/gateway/service.yaml
                 """
 
-                sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
+                sh """
+                    kubectl rollout status deployment/shop --namespace shop --timeout=5m
+                    kubectl rollout status deployment/gateway --namespace shop --timeout=5m
+                """
             }
 
             post {
                 failure {
-                    sh "kubectl rollout undo deployment/shop --namespace shop || true"
+                    sh """
+                        kubectl rollout undo deployment/shop --namespace shop || true
+                        kubectl rollout undo deployment/gateway --namespace shop || true
+                    """
                 }
             }
         }

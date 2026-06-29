@@ -20,3 +20,5 @@ resources:
   - shop/deployment.yaml
   - shop/service.yaml
   - shop/ingress.yaml
+  - gateway/deployment.yaml
+  - gateway/service.yaml

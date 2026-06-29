@@ -14,6 +14,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: shop
+                name: gateway
                 port:
                   number: 80

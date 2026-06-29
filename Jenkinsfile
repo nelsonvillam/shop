@@ -225,16 +225,15 @@ pipeline {
                         done
 
                         # ── 6. Deploy with pinned image tags ──────────────────────────
+                        # Only the deployments need re-applying (to pin the image tag).
+                        # All other resources (configmap, services, ingress) were already
+                        # applied with overlay patches by "kubectl apply -k" above — do NOT
+                        # re-apply the base files here or the overlay patches get overwritten.
                         sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
                             k8s/base/shop/deployment.yaml | kubectl apply -f -
 
                         sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
                             k8s/base/gateway/deployment.yaml | kubectl apply -f -
-
-                        kubectl apply -f k8s/base/shop/configmap.yaml
-                        kubectl apply -f k8s/base/shop/service.yaml
-                        kubectl apply -f k8s/base/shop/ingress.yaml
-                        kubectl apply -f k8s/base/gateway/service.yaml
                     """
                 }
 

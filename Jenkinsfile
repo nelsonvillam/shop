@@ -6,13 +6,11 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME         = 'nelsonvillam/shop'
-        GATEWAY_IMAGE_NAME = 'nelsonvillam/gateway'
-        PING_IMAGE_NAME    = 'nelsonvillam/ping-service'
-        IMAGE_TAG          = "${env.BUILD_NUMBER}"
-        GRADLE_USER_HOME   = "${env.WORKSPACE}/.gradle"
-        SONAR_USER_HOME    = "${env.WORKSPACE}/.sonar"
-        AWS_REGION         = 'sa-east-1'
+        IMAGE_NAME       = 'nelsonvillam/shop'
+        IMAGE_TAG        = "${env.BUILD_NUMBER}"
+        GRADLE_USER_HOME = "${env.WORKSPACE}/.gradle"
+        SONAR_USER_HOME  = "${env.WORKSPACE}/.sonar"
+        AWS_REGION       = 'sa-east-1'
     }
 
     stages {
@@ -124,74 +122,29 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            parallel {
-                stage('Build shop image') {
-                    steps {
-                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
-                        sh """
-                            docker buildx build \
-                                --platform linux/amd64,linux/arm64 \
-                                -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                                -t ${IMAGE_NAME}:latest \
-                                --push \
-                                .
-                        """
-                    }
-                }
-                stage('Build gateway image') {
-                    steps {
-                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
-                        sh """
-                            cd gateway
-                            ./gradlew bootJar --no-daemon
-                            docker buildx build \
-                                --platform linux/amd64,linux/arm64 \
-                                -t ${GATEWAY_IMAGE_NAME}:${IMAGE_TAG} \
-                                -t ${GATEWAY_IMAGE_NAME}:latest \
-                                --push \
-                                .
-                        """
-                    }
-                }
-                stage('Build ping-service image') {
-                    steps {
-                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
-                        sh """
-                            cd ping-service
-                            ./gradlew bootJar --no-daemon
-                            docker buildx build \
-                                --platform linux/amd64,linux/arm64 \
-                                -t ${PING_IMAGE_NAME}:${IMAGE_TAG} \
-                                -t ${PING_IMAGE_NAME}:latest \
-                                --push \
-                                .
-                        """
-                    }
-                }
+            steps {
+                sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
+                sh """
+                    docker buildx build \
+                        --platform linux/amd64,linux/arm64 \
+                        -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                        -t ${IMAGE_NAME}:latest \
+                        --push \
+                        .
+                """
             }
         }
 
         stage('Deploy to Kubernetes') {
-            // Deploys to the local Docker Desktop Kubernetes cluster.
-            // Secrets are managed by External Secrets Operator — fetched automatically
-            // from AWS Secrets Manager via the aws-credentials k8s Secret.
             steps {
-                // Inject AWS credentials from Jenkins Credentials Manager.
-                // Create two "Secret text" credentials in Jenkins with these IDs:
-                //   aws-access-key-id     → your AWS_ACCESS_KEY_ID
-                //   aws-secret-access-key → your AWS_SECRET_ACCESS_KEY
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id',     variable: 'CI_AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'aws-secret-access-key', variable: 'CI_AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh """
-                        # ── 1. Switch to local cluster ───────────────────────────────
                         kubectl config use-context docker-desktop
 
-                        # ── 2. Apply manifests ────────────────────────────────────────
-                        kubectl apply -k k8s/overlays/local/
-
-                        # ── 3. Force-replace aws-credentials (always fresh, no "unchanged")
+                        # ── Refresh aws-credentials so ESO can reach Secrets Manager ──
                         set +x
                         kubectl create secret generic aws-credentials \
                             --namespace shop \
@@ -201,16 +154,11 @@ pipeline {
                             --dry-run=client -o yaml | kubectl replace --force -f -
                         set -x
 
-                        # ── 4. Annotate SecretStore to force re-read of aws-credentials ─
-                        # ESO caches SecretStore credentials and only re-reads them when
-                        # the SecretStore resource itself changes (not when the k8s Secret
-                        # it references changes). A touch annotation triggers reconciliation.
                         kubectl annotate secretstore aws-secretsmanager \
                             --namespace shop \
                             force-sync=\$(date +%s) \
                             --overwrite
 
-                        # ── 5. Wait for SecretStore to be Ready ───────────────────────
                         if ! kubectl wait secretstore/aws-secretsmanager \
                                 --namespace shop \
                                 --for=condition=Ready \
@@ -220,7 +168,6 @@ pipeline {
                             exit 1
                         fi
 
-                        # ── 6. Kick ExternalSecrets to re-sync immediately ─────────────
                         for es in mongodb-credentials mongodb-keyfile shop-secret; do
                             kubectl annotate externalsecret/\$es \
                                 --namespace shop \
@@ -228,7 +175,6 @@ pipeline {
                                 --overwrite
                         done
 
-                        # ── 7. Wait for ESO to sync all secrets ───────────────────────
                         for es in mongodb-credentials mongodb-keyfile shop-secret; do
                             if ! kubectl wait externalsecret/\$es \
                                     --namespace shop \
@@ -240,36 +186,18 @@ pipeline {
                             fi
                         done
 
-                        # ── 6. Deploy with pinned image tags ──────────────────────────
-                        # Only the deployments need re-applying (to pin the image tag).
-                        # All other resources (configmap, services, ingress) were already
-                        # applied with overlay patches by "kubectl apply -k" above — do NOT
-                        # re-apply the base files here or the overlay patches get overwritten.
+                        kubectl apply -f k8s/configmap.yaml
+                        kubectl apply -f k8s/service.yaml
+
                         sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
-                            k8s/base/shop/deployment.yaml | kubectl apply -f -
-
-                        sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
-                            k8s/base/gateway/deployment.yaml | kubectl apply -f -
-
-                        sed 's|${PING_IMAGE_NAME}:latest|${PING_IMAGE_NAME}:${IMAGE_TAG}|g' \
-                            k8s/base/ping-service/deployment.yaml | kubectl apply -f -
+                            k8s/deployment.yaml | kubectl apply -f -
                     """
                 }
-
-                sh """
-                    kubectl rollout status deployment/shop --namespace shop --timeout=5m
-                    kubectl rollout status deployment/gateway --namespace shop --timeout=5m
-                    kubectl rollout status deployment/ping-service --namespace shop --timeout=5m
-                """
+                sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
             }
-
             post {
                 failure {
-                    sh """
-                        kubectl rollout undo deployment/shop --namespace shop || true
-                        kubectl rollout undo deployment/gateway --namespace shop || true
-                        kubectl rollout undo deployment/ping-service --namespace shop || true
-                    """
+                    sh "kubectl rollout undo deployment/shop --namespace shop || true"
                 }
             }
         }

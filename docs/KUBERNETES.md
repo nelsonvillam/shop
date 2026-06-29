@@ -22,29 +22,104 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 ## Architecture
 
 ```
-                         ┌──────────────────────────────────────────┐
-                         │               shop namespace             │
-                         │                                          │
-  internet ─────────────▶│  Ingress (nginx)                        │
-                         │     * → shop:80  (any hostname)         │
-                         │         │                                │
-                         │  ┌──────▼──────────────┐                │
-                         │  │   shop Deployment    │                │
-                         │  │   (2 replicas)       │                │
-                         │  │                      │                │
-                         │  │  /health/liveness  ◀─┼── kubelet     │
-                         │  │  /health/readiness ◀─┼── kubelet     │
-                         │  └──┬──────────┬──────┘                │
-                         │     │          │          │             │
-                         │  ┌──▼───┐  ┌───▼──┐  ┌──▼──────┐     │
-                         │  │mongo │  │redis │  │ zipkin  │     │
-                         │  │  SS  │  │ Dep  │  │  Dep    │     │
-                         │  │ 3pods│  │1 pod │  │ 1 pod   │     │
-                         │  └──────┘  └──────┘  └─────────┘     │
-                         └──────────────────────────────────────────┘
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                        LOCAL (Docker Desktop)                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
 
-SS = StatefulSet
+  Browser / curl / Postman
+        │
+        │  HTTP  localhost:9090
+        │
+        ▼
+┌───────────────────────┐
+│   kubectl port-forward │  ← TCP tunnel (Docker Desktop has no real LB)
+│   localhost:9090→ :80  │
+└───────────┬───────────┘
+            │
+            ▼
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  Kubernetes cluster (docker-desktop)                      shop namespace     ║
+║                                                                               ║
+║  ┌──────────────────────────────────────────────────────┐                    ║
+║  │  ingress-nginx namespace                             │                    ║
+║  │                                                      │                    ║
+║  │  ┌────────────────────────────────────────────────┐  │                    ║
+║  │  │  nginx Ingress Controller          (port 80)  │  │                    ║
+║  │  │                                                │  │                    ║
+║  │  │  NO host filter — accepts any hostname         │  │                    ║
+║  │  │  path: /  →  shop Service : 80                 │  │                    ║
+║  │  │                                                │  │                    ║
+║  │  │  ✗ No API Gateway                              │  │                    ║
+║  │  │  ✗ No TLS termination (HTTP only, local)       │  │                    ║
+║  │  │  ✗ No rate limiting                            │  │                    ║
+║  │  │  ✓ Path-based routing                          │  │                    ║
+║  │  │  ✓ Load balances across shop replicas          │  │                    ║
+║  │  └────────────────┬───────────────────────────────┘  │                    ║
+║  └───────────────────│──────────────────────────────────┘                    ║
+║                      │                                                        ║
+║              ┌───────▼────────┐                                               ║
+║              │  shop Service  │  ClusterIP  10.96.46.105:80                  ║
+║              │  (round-robin) │                                               ║
+║              └───────┬────────┘                                               ║
+║                      │                                                        ║
+║            ┌─────────┴──────────┐                                             ║
+║            ▼                    ▼                                             ║
+║   ┌─────────────────┐  ┌─────────────────┐                                   ║
+║   │  shop pod 1     │  │  shop pod 2     │  Spring Boot :8080                ║
+║   │                 │  │                 │                                    ║
+║   │  /actuator/     │  │  /actuator/     │  ← liveness probe (kubelet)       ║
+║   │   health/live   │  │   health/live   │                                    ║
+║   │  /actuator/     │  │  /actuator/     │  ← readiness probe (kubelet)      ║
+║   │   health/ready  │  │   health/ready  │                                    ║
+║   └────┬──────┬─────┘  └────┬──────┬────┘                                    ║
+║        │      │              │      │                                         ║
+║        │      └──────────────┘      │                                         ║
+║        │             │              │                                         ║
+║   ┌────▼────┐   ┌────▼──────────────▼────┐   ┌──────────┐                   ║
+║   │  redis  │   │  mongo Service         │   │  zipkin  │                   ║
+║   │ :6379   │   │  (headless per-pod DNS)│   │  :9411   │                   ║
+║   └─────────┘   └────────────┬───────────┘   └──────────┘                   ║
+║                               │                                               ║
+║                ┌──────────────┼──────────────┐                               ║
+║                ▼              ▼              ▼                               ║
+║          ┌──────────┐  ┌──────────┐  ┌──────────┐                           ║
+║          │ mongo-0  │  │ mongo-1  │  │ mongo-2  │  MongoDB :27017            ║
+║          │ PRIMARY  │  │SECONDARY │  │SECONDARY │                            ║
+║          │  10 Gi   │  │  10 Gi   │  │  10 Gi   │  PersistentVolumes        ║
+║          └──────────┘  └──────────┘  └──────────┘                           ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+                                          ▲
+                                          │  secretsmanager:GetSecretValue
+                                          │
+                              ┌───────────┴──────────┐
+                              │  AWS Secrets Manager  │  sa-east-1
+                              │                       │
+                              │  shop/mongo-user      │
+                              │  shop/mongo-password  │
+                              │  shop/admin-password  │
+                              │  shop/jwt-secret      │
+                              │  shop/mongodb-keyfile │
+                              └───────────────────────┘
+                                          ▲
+                                          │  syncs every 1h
+                              ┌───────────┴──────────┐
+                              │  External Secrets     │
+                              │  Operator (ESO)       │
+                              │  namespace: external- │
+                              │            secrets    │
+                              └───────────────────────┘
 ```
+
+| Layer | What's there | What's missing (local) |
+|---|---|---|
+| Entry | `kubectl port-forward` (local) / Load Balancer (EKS) | Real LB on Docker Desktop |
+| Reverse proxy | nginx Ingress Controller | TLS, rate limiting, auth |
+| API Gateway | None — nginx does path routing only | AWS API Gateway / Kong / Traefik |
+| App tier | 2 shop pods, round-robin via ClusterIP Service | |
+| DB tier | MongoDB 3-node replica set (1 PRIMARY, 2 SECONDARY) | |
+| Secret sync | ESO → AWS Secrets Manager | |
 
 ---
 

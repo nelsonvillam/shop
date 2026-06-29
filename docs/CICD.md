@@ -7,7 +7,7 @@ The project is split into four independent GitHub repositories, each with its ow
 | `shop` | `nelsonvillam/shop` | Lint → test → SonarQube → build → push → deploy |
 | `gateway` | `nelsonvillam/gateway` | Build → push → deploy |
 | `ping-service` | `nelsonvillam/ping-service` | Build → push → deploy |
-| `infra` | `nelsonvillam/infra` | Shared k8s infra (MongoDB, Redis, Zipkin, ESO) — no pipeline |
+| `infra` | `nelsonvillam/infra` | Installs ESO + nginx, applies manifests, syncs secrets, inits MongoDB RS |
 
 ---
 
@@ -108,6 +108,23 @@ flowchart TD
     style A fill:#4CAF50,color:#fff
     style E fill:#2196F3,color:#fff
 ```
+
+### infra pipeline
+
+```mermaid
+flowchart TD
+    A([Push to nelsonvillam/infra]) --> B[Checkout]
+    B --> C[Install ESO\nHelm — skip if present]
+    C --> D[Install nginx Ingress\nskip if present]
+    D --> E[Apply Manifests\nkubectl apply -k k8s/overlays/local/]
+    E --> F[Sync Secrets\naws-credentials → ESO → k8s Secrets]
+    F --> G[Init MongoDB RS\nrs-init-job]
+
+    style A fill:#4CAF50,color:#fff
+    style G fill:#2196F3,color:#fff
+```
+
+Must complete before any service pipeline runs — services depend on the secrets and MongoDB RS that this pipeline provisions.
 
 ---
 
@@ -325,8 +342,8 @@ Data is persisted across deployments via named Docker volumes (`mongo-data`, `re
 
 | Credential ID | Type | Used by |
 |---|---|---|
-| `aws-access-key-id` | Secret text | shop pipeline — ESO → Secrets Manager auth |
-| `aws-secret-access-key` | Secret text | shop pipeline — ESO → Secrets Manager auth |
+| `aws-access-key-id` | Secret text | infra + shop pipelines — ESO → Secrets Manager auth |
+| `aws-secret-access-key` | Secret text | infra + shop pipelines — ESO → Secrets Manager auth |
 | `sonarqube` | Secret text (token) | shop pipeline — SonarQube Analysis |
 
 ---
@@ -335,13 +352,8 @@ Data is persisted across deployments via named Docker volumes (`mongo-data`, `re
 
 Because each pipeline is independent, shared infrastructure must be deployed before any service:
 
-1. Apply infra manifests (creates namespace, MongoDB, Redis, Zipkin, ESO, SecretStore):
-   ```bash
-   kubectl apply -k infra/k8s/overlays/local/
-   ```
-2. Trigger or manually run the **gateway** pipeline
-3. Trigger or manually run the **shop** pipeline
-4. Trigger or manually run the **ping-service** pipeline
+1. Run the **infra** pipeline — creates namespace, MongoDB, Redis, Zipkin, installs ESO + nginx Ingress, syncs all secrets from AWS, initialises MongoDB replica set. Wait for it to complete.
+2. Run **gateway**, **shop**, and **ping-service** pipelines — in any order or simultaneously.
 
 On subsequent pushes each service deploys itself independently — no coordination needed.
 

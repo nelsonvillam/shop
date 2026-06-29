@@ -128,7 +128,13 @@ kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 9090:80 &
 | Swagger UI | http://localhost:9090/swagger-ui/index.html |
 | Health check | http://localhost:9090/actuator/health |
 | Login | `POST http://localhost:9090/auth/login` |
+| Ping (GET) | `GET http://localhost:9090/ping` → `pong - GET` |
+| Ping (POST) | `POST http://localhost:9090/ping` → `pong - POST` |
+| Ping (PUT) | `PUT http://localhost:9090/ping` → `pong - PUT` |
+| Ping (DELETE) | `DELETE http://localhost:9090/ping` → `pong - DELETE` |
 | Zipkin traces | see [Zipkin](#zipkin) below |
+
+The `/ping/**` path is **public** — no token required. This makes it easy to verify API gateway path-based routing without needing to log in first.
 
 ### Swagger quick start
 
@@ -179,6 +185,12 @@ k8s/
 │   │   ├── mongodb-credentials-es.yaml   # ExternalSecret → mongodb-credentials k8s Secret
 │   │   ├── mongodb-keyfile-es.yaml       # ExternalSecret → mongodb-keyfile k8s Secret
 │   │   └── shop-secret-es.yaml           # ExternalSecret → shop-secret k8s Secret (with URI template)
+│   ├── gateway/
+│   │   ├── deployment.yaml               # 1 replica, reads JWT_SECRET from shop-secret
+│   │   └── service.yaml                  # ClusterIP port 80 → 8080
+│   ├── ping-service/
+│   │   ├── deployment.yaml               # 1 replica, /actuator/health probe
+│   │   └── service.yaml                  # ClusterIP port 8080 → 8080
 │   ├── mongodb/
 │   ├── redis/
 │   ├── zipkin/
@@ -213,6 +225,9 @@ kubectl logs -n shop -l app=gateway -f
 
 # Tail shop app logs
 kubectl logs -n shop -l app=shop -f
+
+# Tail ping-service logs
+kubectl logs -n shop -l app=ping-service -f
 
 # Tail last 100 lines without following
 kubectl logs -n shop -l app=shop --tail=100

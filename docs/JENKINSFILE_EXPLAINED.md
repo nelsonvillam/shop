@@ -70,10 +70,13 @@ Defines **when the pipeline is triggered automatically**. `githubPush()` tells J
 
 ```groovy
 environment {
-    IMAGE_NAME        = 'nelsonvillam/shop'
-    IMAGE_TAG         = "${env.BUILD_NUMBER}"
-    GRADLE_USER_HOME  = "${env.WORKSPACE}/.gradle"
-    SONAR_USER_HOME   = "${env.WORKSPACE}/.sonar"
+    IMAGE_NAME         = 'nelsonvillam/shop'
+    GATEWAY_IMAGE_NAME = 'nelsonvillam/gateway'
+    PING_IMAGE_NAME    = 'nelsonvillam/ping-service'
+    IMAGE_TAG          = "${env.BUILD_NUMBER}"
+    GRADLE_USER_HOME   = "${env.WORKSPACE}/.gradle"
+    SONAR_USER_HOME    = "${env.WORKSPACE}/.sonar"
+    AWS_REGION         = 'sa-east-1'
 }
 ```
 
@@ -81,10 +84,13 @@ Defines **environment variables available to all stages** in the pipeline.
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub repository name used when building and pushing the image |
-| `IMAGE_TAG` | `${env.BUILD_NUMBER}` | Jenkins auto-incremented build number used as the image tag (e.g. `shop:12`) |
+| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub repository name for the shop service |
+| `GATEWAY_IMAGE_NAME` | `nelsonvillam/gateway` | Docker Hub repository name for the API gateway |
+| `PING_IMAGE_NAME` | `nelsonvillam/ping-service` | Docker Hub repository name for the ping test microservice |
+| `IMAGE_TAG` | `${env.BUILD_NUMBER}` | Jenkins auto-incremented build number — same tag applied to all three images (e.g. `42`) |
 | `GRADLE_USER_HOME` | `${WORKSPACE}/.gradle` | Redirects Gradle's cache directory to the workspace, avoiding permission errors when running inside Docker containers where the default home (`/`) is read-only |
 | `SONAR_USER_HOME` | `${WORKSPACE}/.sonar` | Redirects SonarQube scanner's cache to the workspace for the same reason |
+| `AWS_REGION` | `sa-east-1` | AWS region used by ESO to reach Secrets Manager |
 
 ---
 
@@ -291,93 +297,89 @@ stage('Build') {
 
 ---
 
-### Stage: `Docker Build`
+### Stage: `Docker Build & Push` (parallel)
 
 ```groovy
-stage('Docker Build') {
-    steps {
-        sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-        sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
+stage('Docker Build & Push') {
+    parallel {
+        stage('Build shop image') { ... }
+        stage('Build gateway image') { ... }
+        stage('Build ping-service image') { ... }
     }
 }
 ```
 
-**When it runs:** after Build completes.
+**When it runs:** after Build completes. All three branches run simultaneously.
 
-- Runs on the Jenkins host (no Docker agent) so it has direct access to the Docker daemon.
-- `docker build -t nelsonvillam/shop:${BUILD_NUMBER} .` — builds the Docker image using the `Dockerfile` in the project root, tagging it with the build number (e.g. `nelsonvillam/shop:15`).
-- `docker tag ... :latest` — also tags the same image as `latest` so it can be pulled without specifying a version.
+Each branch uses `docker buildx` to build and push a multi-architecture image (`linux/amd64` + `linux/arm64`) tagged with both the build number and `latest`:
 
----
+| Branch | Working directory | Steps |
+|---|---|---|
+| Build shop image | `.` (repo root) | `docker buildx build --push -t shop:42 -t shop:latest .` |
+| Build gateway image | `gateway/` | `./gradlew bootJar` then `docker buildx build --push` |
+| Build ping-service image | `ping-service/` | `./gradlew bootJar` then `docker buildx build --push` |
 
-### Stage: `Docker Push`
+The gateway and ping-service each have their own `build.gradle` and `Dockerfile`, so they run `./gradlew bootJar` inside their subdirectory before the Docker build copies the JAR.
 
-```groovy
-stage('Docker Push') {
-    steps {
-        sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
-        sh "docker push ${IMAGE_NAME}:latest"
-    }
-}
-```
-
-**When it runs:** after Docker Build completes.
-
-Pushes both tags (`BUILD_NUMBER` and `latest`) to Docker Hub. Authentication uses the credentials stored in `~/.docker/config.json` from a prior manual `docker login`. No `docker login` step is included in the pipeline because re-running it on every build would fail due to macOS Keychain restrictions in the Jenkins context.
+Authentication uses the credentials stored in `~/.docker/config.json` from a prior manual `docker login`. No `docker login` step is included in the pipeline because re-running it on every build would fail due to macOS Keychain restrictions in the Jenkins context.
 
 ---
 
-### Stage: `Deploy`
+### Stage: `Deploy to Kubernetes`
 
 ```groovy
-stage('Deploy') {
+stage('Deploy to Kubernetes') {
     steps {
         withCredentials([
-            string(credentialsId: 'shop/mongo-user',         variable: 'MONGO_USER'),
-            string(credentialsId: 'shop/mongo-password',     variable: 'MONGO_PASSWORD'),
-            sshUserPrivateKey(credentialsId: 'ec2-ssh-key',  keyFileVariable: 'EC2_KEY')
+            string(credentialsId: 'aws-access-key-id',     variable: 'CI_AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'CI_AWS_SECRET_ACCESS_KEY')
         ]) {
             sh """
-                docker stop shop || true
-                docker rm shop || true
-                docker compose down --remove-orphans || true
-                docker compose up -d
-
-                ssh -o StrictHostKeyChecking=no -i \$EC2_KEY ubuntu@15.228.216.109 \
-                    'cd ~/shop && docker-compose pull shop && docker-compose up -d'
+                kubectl config use-context docker-desktop
+                kubectl apply -k k8s/overlays/local/
+                # refresh aws-credentials, annotate SecretStore, wait for ESO sync ...
+                sed 's|...shop:latest|...shop:${IMAGE_TAG}|g' k8s/base/shop/deployment.yaml | kubectl apply -f -
+                sed 's|...gateway:latest|...gateway:${IMAGE_TAG}|g' k8s/base/gateway/deployment.yaml | kubectl apply -f -
+                sed 's|...ping-service:latest|...ping-service:${IMAGE_TAG}|g' k8s/base/ping-service/deployment.yaml | kubectl apply -f -
+            """
+        }
+        sh """
+            kubectl rollout status deployment/shop --namespace shop --timeout=5m
+            kubectl rollout status deployment/gateway --namespace shop --timeout=5m
+            kubectl rollout status deployment/ping-service --namespace shop --timeout=5m
+        """
+    }
+    post {
+        failure {
+            sh """
+                kubectl rollout undo deployment/shop --namespace shop || true
+                kubectl rollout undo deployment/gateway --namespace shop || true
+                kubectl rollout undo deployment/ping-service --namespace shop || true
             """
         }
     }
 }
 ```
 
-**When it runs:** after Docker Push completes. Skipped if any earlier stage failed.
+**When it runs:** after all three Docker images are built and pushed. Skipped if any earlier stage failed.
 
-This stage performs two deployments in sequence: the local Jenkins host and the AWS EC2 instance.
+**What it does step by step:**
 
-**Credentials:**
-- `shop/mongo-user` and `shop/mongo-password` — fetched from **AWS Secrets Manager** via the AWS Secrets Manager Credentials Provider plugin. Never stored in Jenkins and masked as `****` in logs.
-- `ec2-ssh-key` — SSH private key stored in Jenkins credentials (SSH Username with private key kind). Written to a temporary file and exposed as `$EC2_KEY` for the duration of the block.
+1. **Switch context** — `kubectl config use-context docker-desktop` targets the local cluster.
+2. **Apply manifests** — `kubectl apply -k k8s/overlays/local/` creates or updates all Kubernetes resources (namespace, ExternalSecrets, SecretStore, deployments, services, ingress).
+3. **Refresh AWS credentials** — force-replaces the `aws-credentials` k8s Secret with fresh values from Jenkins so ESO can authenticate to AWS Secrets Manager. `set +x` suppresses xtrace logging during this block to avoid printing credentials.
+4. **Annotate SecretStore** — adds a `force-sync` annotation to trigger ESO to re-read the credentials immediately (ESO caches them and only re-reads on resource change).
+5. **Wait for ESO** — waits up to 120s for all three `ExternalSecret` resources (`mongodb-credentials`, `mongodb-keyfile`, `shop-secret`) to reach `Ready` condition.
+6. **Pin image tags** — `sed` rewrites each deployment's image tag from `:latest` to the exact build number, then `kubectl apply` triggers a rolling update.
+7. **Wait for rollouts** — blocks the pipeline until all three deployments complete successfully.
+8. **Auto-rollback on failure** — if any step fails, the `post { failure }` block runs `kubectl rollout undo` for all three deployments, restoring the previous ReplicaSet.
 
-**Local deployment:**
-- `docker stop shop || true` — stops the running container named `shop` if it exists. `|| true` prevents the step from failing if the container isn't running.
-- `docker rm shop || true` — removes the stopped container.
-- `docker compose down --remove-orphans || true` — tears down any remaining compose services.
-- `docker compose up -d` — starts the application in detached mode using the latest image.
+**Jenkins credentials required:**
 
-**EC2 deployment:**
-- `ssh -o StrictHostKeyChecking=no -i $EC2_KEY ubuntu@15.228.216.109` — connects to the EC2 instance using the private key. `StrictHostKeyChecking=no` skips the host fingerprint prompt which would hang the pipeline.
-- `docker-compose pull shop` — pulls the latest image from Docker Hub.
-- `docker-compose up -d` — restarts the shop container with the new image.
-
-**Prerequisites:**
-- **AWS Secrets Manager Credentials Provider** plugin installed in Jenkins
-- AWS region configured in **Manage Jenkins → System → AWS Secrets Manager** (e.g. `sa-east-1`)
-- IAM user/role with `secretsmanager:GetSecretValue` on `arn:aws:secretsmanager:*:*:secret:shop/*`
-- Jenkins credential `ec2-ssh-key` of kind **SSH Username with private key** containing the EC2 `.pem` key
-- Secrets in AWS Secrets Manager:
-  - `shop/mongo-user` — MongoDB username
-  - `shop/mongo-password` — MongoDB password
+| Credential ID | Type | Purpose |
+|---|---|---|
+| `aws-access-key-id` | Secret text | AWS access key for ESO → Secrets Manager auth |
+| `aws-secret-access-key` | Secret text | AWS secret key for ESO → Secrets Manager auth |
 
 ---
 

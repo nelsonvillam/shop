@@ -64,14 +64,29 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 ║         │  PUBLIC (no token required):           │                           ║
 ║         │    /auth/**   /actuator/**             │                           ║
 ║         │    /swagger-ui/**  /v3/api-docs/**     │                           ║
+║         │    /ping/**                            │                           ║
 ║         │                                        │                           ║
 ║         │  PROTECTED (Bearer token required):    │                           ║
 ║         │    validates JWT → adds X-User-Name    │                           ║
 ║         │    header → forwards to shop           │                           ║
 ║         │    invalid/missing token → 401         │                           ║
-║         └────────────┬───────────────────────────┘                           ║
-║                      │  routes /**  →  http://shop:80                        ║
-║              ┌───────▼────────┐                                               ║
+║         └──────┬─────────────────────────────────┘                           ║
+║                │  routes /ping/** → http://ping-service:8080                 ║
+║                │  routes /**      → http://shop:80                           ║
+║                │                                                              ║
+║   ┌────────────▼──────────┐    ┌──────────────────────────┐                  ║
+║   │  ping-service Service │    │                          │                  ║
+║   │  ClusterIP :8080      │    │                          │                  ║
+║   └────────────┬──────────┘    │                          │                  ║
+║                │               │                          │                  ║
+║   ┌────────────▼────────────┐  │                          │                  ║
+║   │  ping-service pod       │  │                          │                  ║
+║   │  Spring Boot :8080      │  │                          │                  ║
+║   │  GET/POST/PUT/DELETE    │  │                          │                  ║
+║   │  /ping → "pong - <METHOD>"│ │                          │                  ║
+║   └─────────────────────────┘  │                          │                  ║
+║                                │                          │                  ║
+║              ┌─────────────────▼──────┐                   │                  ║
 ║              │  shop Service  │  ClusterIP :80                               ║
 ║              │  (round-robin) │                                               ║
 ║              └───────┬────────┘                                               ║
@@ -125,7 +140,8 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 |---|---|---|
 | Entry | `kubectl port-forward` (local) / Load Balancer (EKS) | Docker Desktop has no real LB |
 | Reverse proxy | nginx Ingress Controller | Path routing, no TLS locally |
-| **API Gateway** | **Spring Cloud Gateway** | **JWT validation, X-User-Name header forwarding** |
+| **API Gateway** | **Spring Cloud Gateway** | **JWT validation, path-based routing, X-User-Name header forwarding** |
+| Test service | ping-service | Routes `/ping/**` — returns `"pong - <METHOD>"` for GET/POST/PUT/DELETE |
 | App tier | 2 shop pods, round-robin via ClusterIP Service | |
 | DB tier | MongoDB 3-node replica set (1 PRIMARY, 2 SECONDARY) | |
 | Secret sync | ESO → AWS Secrets Manager | Refreshes every 1h |
@@ -140,7 +156,15 @@ gateway/                            # Spring Cloud Gateway (separate Spring Boot
 │   ├── GatewayApplication.java
 │   └── filter/
 │       └── JwtAuthenticationFilter.java  # GlobalFilter: validates JWT, adds X-User-Name
-├── src/main/resources/application.yml    # route: /** → http://shop:80
+├── src/main/resources/application.yml    # routes: /ping/** → ping-service, /** → shop
+├── build.gradle
+└── Dockerfile
+
+ping-service/                       # Test microservice (separate Spring Boot project)
+├── src/main/java/com/example/ping/
+│   ├── PingApplication.java
+│   └── PingController.java         # GET/POST/PUT/DELETE /ping → "pong - <METHOD>"
+├── src/main/resources/application.yml
 ├── build.gradle
 └── Dockerfile
 
@@ -156,6 +180,9 @@ k8s/
 │   ├── gateway/
 │   │   ├── deployment.yaml         # 1 replica, reads JWT_SECRET from shop-secret
 │   │   └── service.yaml            # ClusterIP port 80 → 8080
+│   ├── ping-service/
+│   │   ├── deployment.yaml         # 1 replica, /actuator/health probe
+│   │   └── service.yaml            # ClusterIP port 8080 → 8080
 │   ├── mongodb/
 │   │   ├── statefulset.yaml        # 3-node replica set with keyFile auth
 │   │   ├── headless-service.yaml   # stable DNS names for each pod
@@ -559,20 +586,20 @@ Client request
     ▼
 JwtAuthenticationFilter (GlobalFilter, order = -1)
     │
-    ├─ path is public? (/auth/**, /actuator/**, /swagger-ui/**, /v3/api-docs/**)
-    │       └─ forward as-is → shop
+    ├─ path is public? (/auth/**, /actuator/**, /swagger-ui/**, /v3/api-docs/**, /ping/**)
+    │       └─ forward as-is → route matching (see Routing below)
     │
     └─ protected path
             │
             ├─ Authorization: Bearer <token> present?
-            │       NO  → 401 immediately (shop never receives the request)
+            │       NO  → 401 immediately (no downstream service receives the request)
             │
             └─ YES → validate token signature + expiry
                         │
                         ├─ invalid → 401
                         │
                         └─ valid  → add header X-User-Name: <subject>
-                                        → forward to shop
+                                        → route matching
 ```
 
 #### JWT validation
@@ -594,14 +621,19 @@ The gateway uses the same key derivation as the shop service (`Keys.hmacShaKeyFo
 | `/auth/**` | No | Login and register endpoints — they issue the token |
 | `/actuator/**` | No | Health probes hit by kubelet from inside the cluster |
 | `/swagger-ui/**`, `/v3/api-docs/**` | No | Swagger UI must load before the user has a token |
+| `/ping/**` | No | Test microservice — public to allow gateway routing tests without a token |
 | Everything else | Yes | All business API endpoints |
 
 #### Routing
 
-All traffic is forwarded to `http://shop:80` (Kubernetes DNS resolves `shop` to the shop ClusterIP Service within the namespace). There is one catch-all route:
+Routes are evaluated in order — the first matching predicate wins. `/ping/**` is matched before the catch-all so ping-service receives those requests:
 
 ```yaml
 routes:
+  - id: ping-service
+    uri: http://ping-service:8080
+    predicates:
+      - Path=/ping/**
   - id: shop
     uri: http://shop:80
     predicates:
@@ -724,6 +756,7 @@ Kubernetes DNS resolves service names within the `shop` namespace without any co
 | Redis | `redis` | `redis.shop.svc.cluster.local` | 6379 |
 | Zipkin | `zipkin` | `zipkin.shop.svc.cluster.local` | 9411 |
 | Shop API | `shop` | `shop.shop.svc.cluster.local` | 80 |
+| Ping service | `ping-service` | `ping-service.shop.svc.cluster.local` | 8080 |
 
 The shop app, Redis, and Zipkin use the **short names** (`redis`, `zipkin`) and K8s DNS resolves them. MongoDB uses the **fully-qualified per-pod names** in the replica set URI so the driver can independently address each member.
 
@@ -810,21 +843,25 @@ git push
   → Tests, lint, SonarQube quality gate
   → Gradle bootJar (shop)
   → Docker Build & Push (parallel):
-      shop:    nelsonvillam/shop:42      ← pinned build tag
-               nelsonvillam/shop:latest  ← floating alias (not used in K8s)
-      gateway: cd gateway && ./gradlew bootJar
-               nelsonvillam/gateway:42
-               nelsonvillam/gateway:latest
+      shop:         nelsonvillam/shop:42       ← pinned build tag
+                    nelsonvillam/shop:latest   ← floating alias (not used in K8s)
+      gateway:      cd gateway && ./gradlew bootJar
+                    nelsonvillam/gateway:42
+                    nelsonvillam/gateway:latest
+      ping-service: cd ping-service && ./gradlew bootJar
+                    nelsonvillam/ping-service:42
+                    nelsonvillam/ping-service:latest
   → kubectl apply -k k8s/overlays/local/ (creates ExternalSecrets + SecretStore)
   → aws-credentials k8s Secret upserted from Jenkins AWS env vars
   → ESO syncs 3 secrets from AWS Secrets Manager → Kubernetes Secrets
-  → sed rewrites shop deployment:    image: ...shop:42
-  → sed rewrites gateway deployment: image: ...gateway:42
-  → kubectl apply → K8s creates new ReplicaSets for both
+  → sed rewrites shop deployment:         image: ...shop:42
+  → sed rewrites gateway deployment:      image: ...gateway:42
+  → sed rewrites ping-service deployment: image: ...ping-service:42
+  → kubectl apply → K8s creates new ReplicaSets for all three
   → Rolling updates: new pods start, pass readiness probes
   → Old pods terminated
-  → kubectl rollout status (shop + gateway) blocks pipeline until complete
-  → On failure: kubectl rollout undo for both shop and gateway
+  → kubectl rollout status (shop + gateway + ping-service) blocks pipeline until complete
+  → On failure: kubectl rollout undo for shop, gateway, and ping-service
 ```
 
 ### Jenkins IAM requirements
@@ -895,6 +932,8 @@ Each pod has requests and limits defined:
 | Component | CPU request | CPU limit | Memory request | Memory limit |
 |---|---|---|---|---|
 | shop | 250m | 1 | 512Mi | 1Gi |
+| gateway | 100m | 500m | 256Mi | 512Mi |
+| ping-service | 50m | 200m | 128Mi | 256Mi |
 | mongo | 250m | 1 | 512Mi | 1Gi |
 | redis | 100m | 500m | 128Mi | 256Mi |
 | zipkin | 100m | 500m | 256Mi | 512Mi |

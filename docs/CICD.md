@@ -53,8 +53,10 @@ These are set globally for all stages:
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub image name |
-| `IMAGE_TAG` | `${BUILD_NUMBER}` | Unique tag per build |
+| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub image name for the shop service |
+| `GATEWAY_IMAGE_NAME` | `nelsonvillam/gateway` | Docker Hub image name for the API gateway |
+| `PING_IMAGE_NAME` | `nelsonvillam/ping-service` | Docker Hub image name for the ping microservice |
+| `IMAGE_TAG` | `${BUILD_NUMBER}` | Unique tag per build — same tag applied to all three images |
 | `GRADLE_USER_HOME` | `${WORKSPACE}/.gradle` | Redirects Gradle cache into the workspace to avoid permission errors in Docker containers |
 | `SONAR_USER_HOME` | `${WORKSPACE}/.sonar` | Redirects SonarQube cache into the workspace for the same reason |
 
@@ -75,9 +77,13 @@ flowchart TD
     F --> G
     G --> H[Quality Gate\nwaitForQualityGate]
     H --> I[Build\n./gradlew bootJar]
-    I --> J[Docker Build]
-    J --> K[Docker Push\nDocker Hub]
-    K --> L[Deploy\ndocker compose up]
+    I --> J[Docker Build & Push - parallel]
+    J --> J1[shop image\nnelsonvillam/shop]
+    J --> J2[gateway image\nnelsonvillam/gateway]
+    J --> J3[ping-service image\nnelsonvillam/ping-service]
+    J1 --> L[Deploy to Kubernetes]
+    J2 --> L
+    J3 --> L
 
     C -->|HTML| R1[Checkstyle Report]
     C -->|HTML| R2[PMD Report]
@@ -86,9 +92,9 @@ flowchart TD
     F -->|JUnit + HTML| R5[Integration Test Report]
     G -->|HTML| R6[Coverage Report]
 
-    L --> M[(MongoDB)]
+    L --> M[(MongoDB RS)]
     L --> N[(Redis)]
-    L --> O[shop:8081]
+    L --> O[gateway → shop\nping-service]
 
     style A fill:#4CAF50,color:#fff
     style O fill:#2196F3,color:#fff
@@ -214,37 +220,65 @@ Output: `build/libs/shop-0.0.1-SNAPSHOT.jar`
 
 ---
 
-### 7. Docker Build
+### 7. Docker Build & Push (parallel)
 
-Builds and tags the application image with both the build number and `latest`.
+Three images are built and pushed in parallel using `docker buildx` for multi-architecture support (`linux/amd64` + `linux/arm64`). Each image is tagged with both the build number and `latest`.
 
-```bash
-docker build -t nelsonvillam/shop:<BUILD_NUMBER> .
-docker tag nelsonvillam/shop:<BUILD_NUMBER> nelsonvillam/shop:latest
-```
+| Parallel stage | Working dir | Image pushed |
+|---|---|---|
+| Build shop image | `.` (repo root) | `nelsonvillam/shop:<BUILD_NUMBER>`, `nelsonvillam/shop:latest` |
+| Build gateway image | `gateway/` | `nelsonvillam/gateway:<BUILD_NUMBER>`, `nelsonvillam/gateway:latest` |
+| Build ping-service image | `ping-service/` | `nelsonvillam/ping-service:<BUILD_NUMBER>`, `nelsonvillam/ping-service:latest` |
 
----
+The gateway and ping-service each run their own `./gradlew bootJar` before the Docker build because they are standalone Gradle projects with their own build files.
 
-### 8. Docker Push
-
-Pushes both tags to Docker Hub. No `docker login` step runs in the pipeline — credentials are stored as a plain base64 token in `~/.docker/config.json` on the Jenkins host (the `credsStore` key is removed to avoid macOS Keychain lookups that Jenkins cannot perform).
-
-```bash
-docker push nelsonvillam/shop:<BUILD_NUMBER>
-docker push nelsonvillam/shop:latest
-```
+No `docker login` step runs in the pipeline — credentials are stored as a plain base64 token in `~/.docker/config.json` on the Jenkins host.
 
 ---
 
-### 9. Deploy
+### 8. Deploy to Kubernetes
 
-Stops any running instance and brings up the full stack using `docker compose`. MongoDB credentials are injected from Jenkins secrets.
+Applies all manifests via Kustomize, refreshes AWS credentials for the External Secrets Operator, waits for secrets to sync, then pins each deployment to the exact build-number image tag.
 
 ```bash
-docker stop shop || true
-docker rm shop || true
-docker compose down --remove-orphans || true
-docker compose up -d
+# Switch to local cluster
+kubectl config use-context docker-desktop
+
+# Apply all resources (ExternalSecrets, SecretStore, deployments, services, ingress)
+kubectl apply -k k8s/overlays/local/
+
+# Refresh aws-credentials secret so ESO can authenticate to AWS Secrets Manager
+kubectl create secret generic aws-credentials --namespace shop \
+    --from-literal=access-key-id="..." --from-literal=secret-access-key="..." \
+    --dry-run=client -o yaml | kubectl replace --force -f -
+
+# Wait for ESO to sync all secrets
+for es in mongodb-credentials mongodb-keyfile shop-secret; do
+    kubectl wait externalsecret/$es --namespace shop --for=condition=Ready --timeout=120s
+done
+
+# Pin each deployment to the exact build tag (no :latest in the cluster)
+sed 's|nelsonvillam/shop:latest|nelsonvillam/shop:<BUILD_NUMBER>|g' \
+    k8s/base/shop/deployment.yaml | kubectl apply -f -
+
+sed 's|nelsonvillam/gateway:latest|nelsonvillam/gateway:<BUILD_NUMBER>|g' \
+    k8s/base/gateway/deployment.yaml | kubectl apply -f -
+
+sed 's|nelsonvillam/ping-service:latest|nelsonvillam/ping-service:<BUILD_NUMBER>|g' \
+    k8s/base/ping-service/deployment.yaml | kubectl apply -f -
+
+# Wait for all three rollouts to complete
+kubectl rollout status deployment/shop --namespace shop --timeout=5m
+kubectl rollout status deployment/gateway --namespace shop --timeout=5m
+kubectl rollout status deployment/ping-service --namespace shop --timeout=5m
+```
+
+On failure, all three deployments are automatically rolled back:
+
+```bash
+kubectl rollout undo deployment/shop --namespace shop
+kubectl rollout undo deployment/gateway --namespace shop
+kubectl rollout undo deployment/ping-service --namespace shop
 ```
 
 ---
@@ -269,22 +303,30 @@ All reports are published in the `post { always { } }` block so they appear even
 
 ---
 
-## Deployment Stack (`docker-compose.yml`)
+## Services
 
-Three services start together on the same Docker network:
+### Kubernetes (primary — deployed by CI/CD)
+
+All services run in the `shop` namespace and communicate via Kubernetes DNS:
+
+| Service | Image | Internal port | Role |
+|---|---|---|---|
+| `gateway` | `nelsonvillam/gateway` | 8080 | API gateway — JWT validation, path-based routing |
+| `shop` | `nelsonvillam/shop` | 8080 | Main business API (2 replicas) |
+| `ping-service` | `nelsonvillam/ping-service` | 8080 | Test microservice — simple GET/POST/PUT/DELETE responses |
+| `mongo` | `mongo:7` (StatefulSet) | 27017 | MongoDB replica set (3 nodes) |
+| `redis` | `redis:7-alpine` | 6379 | Application cache |
+| `zipkin` | `openzipkin/zipkin:3` | 9411 | Distributed tracing |
+
+### docker-compose.yml (local testing without K8s)
 
 | Service | Image | Port |
 |---|---|---|
 | `mongo` | `mongo:7` | 27017 (internal) |
 | `redis` | `redis:7-alpine` | 6379 (internal) |
+| `zipkin` | `openzipkin/zipkin:3` | **9411 → 9411** |
 | `shop` | `nelsonvillam/shop:latest` | **8081 → 8080** |
-
-The shop service connects to MongoDB using:
-```
-mongodb://<user>:<password>@mongo:27017/shop?authSource=admin
-```
-
-`authSource=admin` is required because the root user created by `MONGO_INITDB_ROOT_USERNAME` is stored in the `admin` database.
+| `ping-service` | `nelsonvillam/ping-service:latest` | **8082 → 8080** |
 
 Data is persisted across deployments via named Docker volumes (`mongo-data`, `redis-data`).
 

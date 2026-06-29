@@ -123,11 +123,10 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            steps {
-                sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
-                // Build shop and gateway images in parallel
-                parallel(
-                    shop: {
+            parallel {
+                stage('Build shop image') {
+                    steps {
+                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
                         sh """
                             docker buildx build \
                                 --platform linux/amd64,linux/arm64 \
@@ -136,11 +135,14 @@ pipeline {
                                 --push \
                                 .
                         """
-                    },
-                    gateway: {
+                    }
+                }
+                stage('Build gateway image') {
+                    steps {
+                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
                         sh """
-                            cd gateway && \
-                            ./gradlew bootJar --no-daemon && \
+                            cd gateway
+                            ./gradlew bootJar --no-daemon
                             docker buildx build \
                                 --platform linux/amd64,linux/arm64 \
                                 -t ${GATEWAY_IMAGE_NAME}:${IMAGE_TAG} \
@@ -149,7 +151,7 @@ pipeline {
                                 .
                         """
                     }
-                )
+                }
             }
         }
 

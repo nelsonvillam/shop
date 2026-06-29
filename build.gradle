@@ -153,5 +153,9 @@ sonar {
         property 'sonar.projectKey',   'nelsonvillam_shop'
         property 'sonar.organization', 'nelsonvillam'
         property 'sonar.coverage.jacoco.xmlReportPaths', 'build/reports/jacoco/test/jacocoTestReport.xml'
+        // Mirror the JaCoCo class exclusions so SonarCloud doesn't count
+        // uncovered lines in files that are intentionally excluded from the report.
+        property 'sonar.coverage.exclusions',
+            '**/dto/**,**/entity/**,**/model/**,**/mapper/**,**/config/**,**/*Application*'
     }
 }

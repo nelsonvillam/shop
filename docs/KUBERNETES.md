@@ -52,35 +52,37 @@ SS = StatefulSet
 
 ```
 k8s/
-├── namespace.yaml                # "shop" namespace — all resources live here
-├── kustomization.yaml            # apply everything with: kubectl apply -k k8s/
-├── storageclass.yaml             # gp2-csi StorageClass (EBS CSI driver, K8s 1.27+)
-│
-├── mongodb/
-│   ├── credentials-secret.yaml  # PLACEHOLDER ONLY — see note below
-│   ├── keyfile-secret.yaml      # PLACEHOLDER ONLY — see note below
-│   ├── statefulset.yaml         # 3-node replica set with keyFile auth
-│   ├── headless-service.yaml    # stable DNS names for each pod
-│   ├── service.yaml             # ClusterIP for tooling / ad-hoc access
-│   └── rs-init-job.yaml         # Job that calls rs.initiate() once
-│
-├── redis/
-│   ├── deployment.yaml
-│   └── service.yaml
-│
-├── zipkin/
-│   ├── deployment.yaml
-│   └── service.yaml
-│
-└── shop/
-    ├── configmap.yaml            # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
-    ├── secret.yaml               # PLACEHOLDER ONLY — see note below
-    ├── deployment.yaml           # 2 replicas, liveness + readiness probes
-    ├── service.yaml              # ClusterIP port 80 → 8080
-    └── ingress.yaml              # nginx Ingress, accepts any hostname
+├── kustomization.yaml              # delegates to overlays/eks (used by CI/CD)
+├── base/                           # shared resources for all environments
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── external-secrets/
+│   │   ├── mongodb-credentials-es.yaml  # ExternalSecret — syncs username + password
+│   │   ├── mongodb-keyfile-es.yaml      # ExternalSecret — syncs keyfile
+│   │   └── shop-secret-es.yaml          # ExternalSecret — syncs JWT, admin pw, assembles URI
+│   ├── mongodb/
+│   │   ├── statefulset.yaml        # 3-node replica set with keyFile auth
+│   │   ├── headless-service.yaml   # stable DNS names for each pod
+│   │   ├── service.yaml            # ClusterIP for tooling / ad-hoc access
+│   │   └── rs-init-job.yaml        # Job that calls rs.initiate() once
+│   ├── redis/
+│   ├── zipkin/
+│   └── shop/
+│       ├── configmap.yaml          # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
+│       ├── deployment.yaml         # 2 replicas, liveness + readiness probes
+│       ├── service.yaml            # ClusterIP port 80 → 8080
+│       └── ingress.yaml            # nginx Ingress, accepts any hostname
+└── overlays/
+    ├── local/                      # Docker Desktop
+    │   ├── kustomization.yaml
+    │   └── secret-store.yaml       # SecretStore: static AWS credentials
+    └── eks/                        # EKS
+        ├── kustomization.yaml
+        ├── storageclass.yaml       # gp2-csi StorageClass (EBS CSI driver)
+        └── secret-store.yaml       # SecretStore: IRSA (IAM role via service account)
 ```
 
-> **Secret placeholder files** (`mongodb/credentials-secret.yaml`, `mongodb/keyfile-secret.yaml`, `shop/secret.yaml`) contain only `CHANGE_ME` values and are **intentionally excluded from `kustomization.yaml`**. Running `kubectl apply -k k8s/` will never overwrite cluster secrets with these placeholders. Real secrets are created from AWS Secrets Manager by the Jenkins pipeline, or manually using the commands in [One-Time Cluster Setup](#one-time-cluster-setup).
+No placeholder secret YAML files are committed to git. Secrets are managed exclusively by the External Secrets Operator — see [External Secrets Operator](#external-secrets-operator) below.
 
 ---
 
@@ -97,77 +99,141 @@ k8s/
 
 ---
 
+## External Secrets Operator
+
+Secrets are managed by the **External Secrets Operator (ESO)**, which watches `ExternalSecret` resources and automatically syncs values from AWS Secrets Manager into Kubernetes `Secret` objects. No secret values are ever stored in git or in any manifest file.
+
+### How it works
+
+```
+AWS Secrets Manager                ESO                        Kubernetes Secrets
+───────────────────────            ─────────────────────      ──────────────────────
+shop/mongo-user          ──────▶  ExternalSecret          ──▶  mongodb-credentials
+shop/mongo-password      ──────▶  mongodb-credentials     ──▶  (username, password)
+
+shop/mongodb-keyfile     ──────▶  ExternalSecret          ──▶  mongodb-keyfile
+                                  mongodb-keyfile          ──▶  (keyfile)
+
+shop/jwt-secret          ──────▶  ExternalSecret          ──▶  shop-secret
+shop/admin-password      ──────▶  shop-secret             ──▶  (JWT_SECRET,
+shop/mongo-user          ──────▶  (template engine)       ──▶   ADMIN_PASSWORD,
+shop/mongo-password                assembles URI                 SPRING_DATA_MONGODB_URI)
+```
+
+The `SPRING_DATA_MONGODB_URI` is assembled at sync time by ESO's Go template engine — the full URI is never written in any file or log.
+
+### SecretStore — authentication to AWS
+
+A `SecretStore` tells ESO how to authenticate when calling AWS Secrets Manager. The auth method differs by environment:
+
+| Environment | Auth method | How credentials are provided |
+|---|---|---|
+| Local (Docker Desktop) | Static credentials | `aws-credentials` k8s Secret, created by deploy script from `~/.aws/credentials` — never committed to git |
+| EKS | IRSA | IAM role annotated on a service account; no static credentials needed |
+
+### Sync interval and rotation
+
+ESO re-syncs every **1 hour** by default. After rotating a secret in AWS, force an immediate re-sync:
+
+```bash
+kubectl annotate externalsecret mongodb-credentials \
+  force-sync=$(date +%s) --overwrite -n shop
+```
+
+After re-sync, restart the affected pods to pick up the new values:
+
+```bash
+kubectl rollout restart deployment/shop -n shop
+```
+
+### Checking sync status
+
+```bash
+kubectl get externalsecrets -n shop
+# NAME                  STATUS        READY
+# mongodb-credentials   SecretSynced  True
+# mongodb-keyfile       SecretSynced  True
+# shop-secret           SecretSynced  True
+
+kubectl get secretstore -n shop
+# NAME                 STATUS  CAPABILITIES  READY
+# aws-secretsmanager   Valid   ReadWrite     True
+
+# Detailed error if READY = False:
+kubectl describe externalsecret shop-secret -n shop
+```
+
+---
+
 ## One-Time Cluster Setup
 
-Secrets are provisioned from AWS Secrets Manager. The CI pipeline **fetches them and upserts them into the cluster** on every deploy using `--dry-run=client -o yaml | kubectl apply -f -`, which is idempotent — safe to run on both first run and re-runs.
-
-Run these commands once before the first deploy.
-
-### Step 1 — Create the namespace
+### Step 1 — Install External Secrets Operator
 
 ```bash
-kubectl apply -f k8s/namespace.yaml
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+helm install external-secrets external-secrets/external-secrets \
+  -n external-secrets --create-namespace \
+  --set installCRDs=true \
+  --wait
 ```
 
-### Step 2 — Apply all non-secret resources
+### Step 2 — Apply all resources
+
+For local (Docker Desktop):
+```bash
+kubectl apply -k k8s/overlays/local/
+```
+
+For EKS:
+```bash
+kubectl apply -k k8s/overlays/eks/
+```
+
+This creates the namespace, all workload resources, and the `ExternalSecret` + `SecretStore` resources.
+
+### Step 3 — Create the aws-credentials Secret (local only)
+
+The local `SecretStore` uses static AWS credentials stored in a Kubernetes Secret. The deploy script creates this automatically, but you can also create it manually:
 
 ```bash
-kubectl apply -k k8s/
+# Never commit this — create it imperatively only
+kubectl create secret generic aws-credentials \
+  --namespace shop \
+  --from-literal=access-key-id="$(aws configure get aws_access_key_id)" \
+  --from-literal=secret-access-key="$(aws configure get aws_secret_access_key)" \
+  --from-literal=session-token="$(aws configure get aws_session_token || echo '')"
 ```
 
-This applies everything in `kustomization.yaml` — namespace, StorageClass, StatefulSet, Deployments, Services, ConfigMap, Ingress. Secret files are not in `kustomization.yaml` and will not be applied.
+For EKS with IRSA, no static credentials are needed — skip this step.
 
-### Step 3 — Create secrets from AWS Secrets Manager
+### Step 4 — Wait for ESO to sync secrets
 
 ```bash
-export AWS_REGION=sa-east-1
-
-MONGO_USER=$(aws secretsmanager get-secret-value \
-  --secret-id shop/mongo-user --query SecretString --output text --region $AWS_REGION)
-MONGO_PASSWORD=$(aws secretsmanager get-secret-value \
-  --secret-id shop/mongo-password --query SecretString --output text --region $AWS_REGION)
-ADMIN_PASSWORD=$(aws secretsmanager get-secret-value \
-  --secret-id shop/admin-password --query SecretString --output text --region $AWS_REGION)
-JWT_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id shop/jwt-secret --query SecretString --output text --region $AWS_REGION)
-KEYFILE=$(aws secretsmanager get-secret-value \
-  --secret-id shop/mongodb-keyfile --query SecretString --output text --region $AWS_REGION)
-
-kubectl create secret generic mongodb-credentials \
-  --namespace shop \
-  --from-literal=username="$MONGO_USER" \
-  --from-literal=password="$MONGO_PASSWORD" \
-  --save-config --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl create secret generic mongodb-keyfile \
-  --namespace shop \
-  --from-literal=keyfile="$KEYFILE" \
-  --save-config --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl create secret generic shop-secret \
-  --namespace shop \
-  --from-literal=JWT_SECRET="$JWT_SECRET" \
-  --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-  --from-literal=SPRING_DATA_MONGODB_URI="mongodb://$MONGO_USER:$MONGO_PASSWORD@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
-  --save-config --dry-run=client -o yaml | kubectl apply -f -
+kubectl wait externalsecret/mongodb-credentials \
+  --namespace shop --for=condition=Ready --timeout=60s
+kubectl wait externalsecret/mongodb-keyfile \
+  --namespace shop --for=condition=Ready --timeout=60s
+kubectl wait externalsecret/shop-secret \
+  --namespace shop --for=condition=Ready --timeout=60s
 ```
 
-### Step 4 — Wait for mongo-0, then init the replica set
+### Step 5 — Wait for mongo-0, then init the replica set
 
 ```bash
 kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
 
-kubectl apply -f k8s/mongodb/rs-init-job.yaml
+kubectl apply -f k8s/base/mongodb/rs-init-job.yaml
 
 kubectl logs -l job-name=mongodb-rs-init --namespace shop --follow
 ```
 
 Expected output: `Replica set initialized successfully` or `Replica set already initialized`.
 
-> **If the RS init Job started before secrets were correct:** The Job pod captures env vars at pod creation time. Delete the Job and reapply to create a fresh pod with the correct credentials.
+> **If the RS init Job started before secrets were synced:** The Job pod captures env vars at pod creation time. Delete the Job and reapply to create a fresh pod once ESO has finished syncing.
 > ```bash
 > kubectl delete job mongodb-rs-init --namespace shop
-> kubectl apply -f k8s/mongodb/rs-init-job.yaml
+> kubectl apply -f k8s/base/mongodb/rs-init-job.yaml
 > ```
 
 ---
@@ -177,9 +243,13 @@ Expected output: `Replica set initialized successfully` or `Replica set already 
 ### First deploy
 
 ```bash
-kubectl apply -k k8s/
+# Apply overlay (local or eks)
+kubectl apply -k k8s/overlays/local/
+
+# Wait for ESO to sync secrets, then init MongoDB
+kubectl wait externalsecret/mongodb-credentials --namespace shop --for=condition=Ready --timeout=60s
 kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
-kubectl apply -f k8s/mongodb/rs-init-job.yaml
+kubectl apply -f k8s/base/mongodb/rs-init-job.yaml
 ```
 
 ### Subsequent deploys
@@ -189,11 +259,11 @@ The Jenkins pipeline handles this automatically. To deploy manually:
 ```bash
 IMAGE_TAG=42   # replace with your build number
 sed "s|nelsonvillam/shop:latest|nelsonvillam/shop:${IMAGE_TAG}|g" \
-  k8s/shop/deployment.yaml | kubectl apply -f -
+  k8s/base/shop/deployment.yaml | kubectl apply -f -
 
-kubectl apply -f k8s/shop/configmap.yaml
-kubectl apply -f k8s/shop/service.yaml
-kubectl apply -f k8s/shop/ingress.yaml
+kubectl apply -f k8s/base/shop/configmap.yaml
+kubectl apply -f k8s/base/shop/service.yaml
+kubectl apply -f k8s/base/shop/ingress.yaml
 kubectl rollout status deployment/shop --namespace shop --timeout=5m
 ```
 
@@ -525,67 +595,47 @@ If the shop app used the regular `mongo` ClusterIP service, the driver would con
 
 ## CI/CD Integration
 
-The Jenkins `Deploy to Kubernetes` stage authenticates using IAM (no kubeconfig file stored in Jenkins), then fetches secrets from AWS Secrets Manager at deploy time and upserts them idempotently into the cluster:
+The Jenkins `Deploy to Kubernetes` stage uses ESO for secret management. It only needs to create the `aws-credentials` Kubernetes Secret (from Jenkins' ambient AWS credentials) and then wait for ESO to confirm all secrets are synced before deploying the new image:
 
 ```groovy
 stage('Deploy to Kubernetes') {
     steps {
         sh """
-            aws eks update-kubeconfig \
-                --name ${EKS_CLUSTER} \
-                --region ${AWS_REGION}
+            # Switch to local cluster (replace with EKS context for cloud deploy)
+            kubectl config use-context docker-desktop
 
-            MONGO_USER=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/mongo-user \
-                --query SecretString --output text --region ${AWS_REGION})
-            MONGO_PASSWORD=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/mongo-password \
-                --query SecretString --output text --region ${AWS_REGION})
-            ADMIN_PASSWORD=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/admin-password \
-                --query SecretString --output text --region ${AWS_REGION})
-            JWT_SECRET=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/jwt-secret \
-                --query SecretString --output text --region ${AWS_REGION})
-            KEYFILE=\$(aws secretsmanager get-secret-value \
-                --secret-id shop/mongodb-keyfile \
-                --query SecretString --output text --region ${AWS_REGION})
+            # Apply manifests — creates/updates ExternalSecret + SecretStore resources
+            kubectl apply -k k8s/overlays/local/
 
-            kubectl create secret generic mongodb-credentials \
+            # Create aws-credentials secret for ESO (no xtrace — contains credentials)
+            set +x
+            kubectl create secret generic aws-credentials \
                 --namespace shop \
-                --from-literal=username="\${MONGO_USER}" \
-                --from-literal=password="\${MONGO_PASSWORD}" \
+                --from-literal=access-key-id="\${AWS_ACCESS_KEY_ID}" \
+                --from-literal=secret-access-key="\${AWS_SECRET_ACCESS_KEY}" \
+                --from-literal=session-token="\${AWS_SESSION_TOKEN:-}" \
                 --save-config --dry-run=client -o yaml | kubectl apply -f -
+            set -x
 
-            kubectl create secret generic mongodb-keyfile \
-                --namespace shop \
-                --from-literal=keyfile="\${KEYFILE}" \
-                --save-config --dry-run=client -o yaml | kubectl apply -f -
+            # Wait for ESO to sync all secrets from AWS
+            for es in mongodb-credentials mongodb-keyfile shop-secret; do
+                kubectl wait externalsecret/\$es \
+                    --namespace shop --for=condition=Ready --timeout=60s
+            done
 
-            kubectl create secret generic shop-secret \
-                --namespace shop \
-                --from-literal=JWT_SECRET="\${JWT_SECRET}" \
-                --from-literal=ADMIN_PASSWORD="\${ADMIN_PASSWORD}" \
-                --from-literal=SPRING_DATA_MONGODB_URI="mongodb://\${MONGO_USER}:\${MONGO_PASSWORD}@mongo-0.mongo-headless:27017,mongo-1.mongo-headless:27017,mongo-2.mongo-headless:27017/shop?authSource=admin&replicaSet=rs0" \
-                --save-config --dry-run=client -o yaml | kubectl apply -f -
-
+            # Deploy with pinned image tag
             sed 's|${IMAGE_NAME}:latest|${IMAGE_NAME}:${IMAGE_TAG}|g' \
-                k8s/shop/deployment.yaml | kubectl apply -f -
+                k8s/base/shop/deployment.yaml | kubectl apply -f -
 
-            kubectl apply -f k8s/shop/configmap.yaml
-            kubectl apply -f k8s/shop/service.yaml
-            kubectl apply -f k8s/shop/ingress.yaml
+            kubectl apply -f k8s/base/shop/configmap.yaml
+            kubectl apply -f k8s/base/shop/service.yaml
+            kubectl apply -f k8s/base/shop/ingress.yaml
         """
         sh "kubectl rollout status deployment/shop --namespace shop --timeout=5m"
     }
     post {
         failure {
-            sh """
-                aws eks update-kubeconfig \
-                    --name ${EKS_CLUSTER} \
-                    --region ${AWS_REGION}
-                kubectl rollout undo deployment/shop --namespace shop || true
-            """
+            sh "kubectl rollout undo deployment/shop --namespace shop || true"
         }
     }
 }
@@ -601,8 +651,9 @@ git push
   → Docker image built and pushed:
       nelsonvillam/shop:42      ← pinned build tag
       nelsonvillam/shop:latest  ← floating alias (not used in K8s)
-  → aws eks update-kubeconfig (IAM auth, no stored kubeconfig file)
-  → Secrets fetched from AWS Secrets Manager, upserted into cluster
+  → kubectl apply -k k8s/overlays/local/ (creates ExternalSecrets + SecretStore)
+  → aws-credentials k8s Secret upserted from Jenkins AWS env vars
+  → ESO syncs 3 secrets from AWS Secrets Manager → Kubernetes Secrets
   → sed rewrites deployment.yaml: image: ...shop:42
   → kubectl apply → K8s creates new ReplicaSet
   → Rolling update: new pods start, pass readiness probes
@@ -617,9 +668,10 @@ The IAM user or role running Jenkins needs:
 
 | Permission | Resource |
 |---|---|
-| `eks:DescribeCluster` | The cluster ARN |
 | `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` | `arn:aws:secretsmanager:<region>:<account>:secret:shop/*` |
-| Entry in cluster `aws-auth` ConfigMap | Allows `kubectl` operations |
+| `kubectl` access | Kubeconfig pointed at the target cluster |
+
+> For EKS: also add `eks:DescribeCluster` and an entry in the cluster `aws-auth` ConfigMap.
 
 ### Why `:latest` is replaced before apply
 
@@ -728,16 +780,16 @@ kubectl get events --namespace shop --sort-by='.lastTimestamp'
 | Problem | Cause | Fix |
 |---|---|---|
 | `mongo-0` pod stuck in `Init:CrashLoopBackOff` | keyFile permissions not fixed | Check init container logs: `kubectl logs mongo-0 -c keyfile-init -n shop` |
-| `mongo-1` / `mongo-2` not joining RS | keyFile mismatch between pods | All pods must use the same Secret; recreate `mongodb-keyfile` secret and restart pods |
-| MongoDB crash: `invalid char in key file` | keyfile secret contains `CHANGE_ME` placeholder | Recreate secret from AWS Secrets Manager; see [One-Time Cluster Setup](#one-time-cluster-setup) |
-| Shop pods stuck in `0/1 Running` | Readiness probe failing | Check: `kubectl exec -it <pod> -n shop -- curl localhost:8080/actuator/health` |
-| `SPRING_DATA_MONGODB_URI` not set | `shop-secret` not created before deploy | Run the secret creation commands in [One-Time Cluster Setup](#one-time-cluster-setup) |
-| RS init Job keeps retrying | mongo-0 not ready, or Job pod started with wrong credentials | Wait for mongo-0; if credentials were wrong at pod start, delete Job and reapply |
-| Secrets reset to `CHANGE_ME` after `kubectl apply -k` | Secret placeholder YAMLs were included in `kustomization.yaml` | Remove secret files from `kustomization.yaml` — they must stay excluded |
+| `mongo-1` / `mongo-2` not joining RS | keyFile mismatch between pods | All pods must use the same Secret; wait for ESO sync then restart pods |
+| MongoDB crash: `invalid char in key file` | keyfile synced incorrectly from AWS | `kubectl describe externalsecret mongodb-keyfile -n shop` — check Events |
+| Shop pods stuck in `0/1 Running` | Readiness probe failing | `kubectl exec -it <pod> -n shop -- curl localhost:8080/actuator/health` |
+| `SPRING_DATA_MONGODB_URI` not set | `shop-secret` ExternalSecret not yet synced | `kubectl get externalsecrets -n shop` — wait for `SecretSynced` then restart pods |
+| ExternalSecret READY = False | SecretStore not ready or AWS auth failed | `kubectl describe externalsecret <name> -n shop` — check Events for auth errors |
+| SecretStore READY = False | `aws-credentials` Secret missing (local) or IRSA misconfigured (EKS) | Re-apply the aws-credentials Secret; for EKS verify the service account annotation |
+| ESO sync fails: `AccessDenied` | IAM policy missing `secretsmanager:GetSecretValue` | Attach policy for `arn:aws:secretsmanager:<region>:<account>:secret:shop/*` |
+| RS init Job keeps retrying | mongo-0 not ready, or ESO hadn't synced credentials yet when Job pod started | Delete Job and reapply after secrets are synced: `kubectl delete job mongodb-rs-init -n shop && kubectl apply -f k8s/base/mongodb/rs-init-job.yaml` |
 | PVCs stuck in `Pending` | EBS CSI driver not installed, or StorageClass uses removed provisioner | Install `aws-ebs-csi-driver` addon; confirm StorageClass uses `ebs.csi.aws.com` |
 | StatefulSet won't update `storageClassName` | `volumeClaimTemplates` is immutable | Delete StatefulSet with `--cascade=orphan`, then reapply |
 | Rolling update stuck | New pods not passing readiness | Pipeline times out after 5m and `kubectl rollout undo` runs automatically |
 | Ingress returns 404 | `host:` in Ingress doesn't match request's `Host` header | Remove `host:` for direct LB access; or add your domain to `/etc/hosts` |
-| Swagger UI not loading in browser | Host mismatch — browser sends LB hostname, Ingress expects a different `host:` | Remove `host:` from Ingress rule (already done in this setup) |
-| `kubectl` can't connect | Wrong kubeconfig context | Run `aws eks update-kubeconfig --name shop-cluster --region sa-east-1` |
-| `secretsmanager:GetSecretValue` denied | IAM policy not attached | Attach policy granting `GetSecretValue` on `arn:aws:secretsmanager:<region>:<account>:secret:shop/*` |
+| `kubectl` can't connect to EKS | Wrong kubeconfig context | `aws eks update-kubeconfig --name shop-cluster --region sa-east-1` |

@@ -185,7 +185,26 @@ pipeline {
                             --dry-run=client -o yaml | kubectl replace --force -f -
                         set -x
 
-                        # ── 4. Kick ESO to re-sync immediately ────────────────────────
+                        # ── 4. Annotate SecretStore to force re-read of aws-credentials ─
+                        # ESO caches SecretStore credentials and only re-reads them when
+                        # the SecretStore resource itself changes (not when the k8s Secret
+                        # it references changes). A touch annotation triggers reconciliation.
+                        kubectl annotate secretstore aws-secretsmanager \
+                            --namespace shop \
+                            force-sync=\$(date +%s) \
+                            --overwrite
+
+                        # ── 5. Wait for SecretStore to be Ready ───────────────────────
+                        if ! kubectl wait secretstore/aws-secretsmanager \
+                                --namespace shop \
+                                --for=condition=Ready \
+                                --timeout=60s; then
+                            echo "=== SecretStore failed — check aws-credentials values ==="
+                            kubectl describe secretstore aws-secretsmanager -n shop || true
+                            exit 1
+                        fi
+
+                        # ── 6. Kick ExternalSecrets to re-sync immediately ─────────────
                         for es in mongodb-credentials mongodb-keyfile shop-secret; do
                             kubectl annotate externalsecret/\$es \
                                 --namespace shop \
@@ -193,15 +212,13 @@ pipeline {
                                 --overwrite
                         done
 
-                        # ── 5. Wait for ESO to sync all secrets ───────────────────────
+                        # ── 7. Wait for ESO to sync all secrets ───────────────────────
                         for es in mongodb-credentials mongodb-keyfile shop-secret; do
                             if ! kubectl wait externalsecret/\$es \
                                     --namespace shop \
                                     --for=condition=Ready \
                                     --timeout=120s; then
-                                echo "=== SecretStore status ==="
-                                kubectl describe secretstore aws-secretsmanager -n shop || true
-                                echo "=== ExternalSecret \$es status ==="
+                                echo "=== ExternalSecret \$es failed ==="
                                 kubectl describe externalsecret/\$es -n shop || true
                                 exit 1
                             fi

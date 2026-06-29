@@ -27,7 +27,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/actuator",
             "/swagger-ui",
             "/v3/api-docs",
-            "/swagger-ui.html"
+            "/swagger-ui.html",
+            "/ping"
     );
 
     private final SecretKey signingKey;

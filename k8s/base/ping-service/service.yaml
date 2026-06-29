@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-service
+  namespace: shop
+spec:
+  selector:
+    app: ping-service
+  ports:
+    - port: 8080
+      targetPort: 8080

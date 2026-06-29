@@ -8,6 +8,7 @@ pipeline {
     environment {
         IMAGE_NAME         = 'nelsonvillam/shop'
         GATEWAY_IMAGE_NAME = 'nelsonvillam/gateway'
+        PING_IMAGE_NAME    = 'nelsonvillam/ping-service'
         IMAGE_TAG          = "${env.BUILD_NUMBER}"
         GRADLE_USER_HOME   = "${env.WORKSPACE}/.gradle"
         SONAR_USER_HOME    = "${env.WORKSPACE}/.sonar"
@@ -152,6 +153,21 @@ pipeline {
                         """
                     }
                 }
+                stage('Build ping-service image') {
+                    steps {
+                        sh "docker buildx create --use --name multibuilder 2>/dev/null || true"
+                        sh """
+                            cd ping-service
+                            ./gradlew bootJar --no-daemon
+                            docker buildx build \
+                                --platform linux/amd64,linux/arm64 \
+                                -t ${PING_IMAGE_NAME}:${IMAGE_TAG} \
+                                -t ${PING_IMAGE_NAME}:latest \
+                                --push \
+                                .
+                        """
+                    }
+                }
             }
         }
 
@@ -234,12 +250,16 @@ pipeline {
 
                         sed 's|${GATEWAY_IMAGE_NAME}:latest|${GATEWAY_IMAGE_NAME}:${IMAGE_TAG}|g' \
                             k8s/base/gateway/deployment.yaml | kubectl apply -f -
+
+                        sed 's|${PING_IMAGE_NAME}:latest|${PING_IMAGE_NAME}:${IMAGE_TAG}|g' \
+                            k8s/base/ping-service/deployment.yaml | kubectl apply -f -
                     """
                 }
 
                 sh """
                     kubectl rollout status deployment/shop --namespace shop --timeout=5m
                     kubectl rollout status deployment/gateway --namespace shop --timeout=5m
+                    kubectl rollout status deployment/ping-service --namespace shop --timeout=5m
                 """
             }
 
@@ -248,6 +268,7 @@ pipeline {
                     sh """
                         kubectl rollout undo deployment/shop --namespace shop || true
                         kubectl rollout undo deployment/gateway --namespace shop || true
+                        kubectl rollout undo deployment/ping-service --namespace shop || true
                     """
                 }
             }

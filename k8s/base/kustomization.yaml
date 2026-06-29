@@ -22,3 +22,5 @@ resources:
   - shop/ingress.yaml
   - gateway/deployment.yaml
   - gateway/service.yaml
+  - ping-service/deployment.yaml
+  - ping-service/service.yaml

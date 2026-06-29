@@ -7,6 +7,10 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: ping-service
+          uri: http://ping-service:8080
+          predicates:
+            - Path=/ping/**
         - id: shop
           uri: http://shop:80
           predicates:

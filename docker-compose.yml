@@ -50,6 +50,11 @@ services:
       zipkin:
         condition: service_started
 
+  ping-service:
+    image: nelsonvillam/ping-service:latest
+    ports:
+      - "8082:8080"
+
 volumes:
   mongo-data:
   redis-data:

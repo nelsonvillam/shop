@@ -38,9 +38,10 @@ docker build -t nelsonvillam/shop:latest .
 
 ## Deploy
 
-Run the deploy script from the repo root:
+Run the deploy script from the `infra` repo:
 
 ```bash
+# From the infra repo root
 ./scripts/local-deploy.sh
 ```
 
@@ -48,14 +49,29 @@ The script:
 1. Switches kubectl to the `docker-desktop` context
 2. Installs **External Secrets Operator** via Helm (skips if already installed)
 3. Installs nginx Ingress controller (skips if already installed)
-4. Applies all Kubernetes manifests via `k8s/overlays/local/` — this creates the `ExternalSecret`, `SecretStore`, gateway, and shop resources
+4. Applies shared infra manifests via `k8s/overlays/local/` — creates namespace, MongoDB, Redis, Zipkin, ESO `SecretStore`, and `ExternalSecret` resources
 5. Creates the `aws-credentials` Kubernetes Secret from your local AWS CLI config — ESO uses this to authenticate against AWS Secrets Manager
 6. Waits for ESO to sync all three secrets (`mongodb-credentials`, `mongodb-keyfile`, `shop-secret`) from AWS
 7. Waits for `mongo-0` to be ready, then initialises the replica set
-8. Waits for the shop deployment to roll out
-9. Starts a port-forward tunnel so the app is reachable at `localhost:9090`
+8. Starts a port-forward tunnel so the app is reachable at `localhost:9090`
 
-> The **Spring Cloud Gateway** pod starts automatically as part of step 4. All external traffic flows through it before reaching the shop service.
+Service deployments (shop, gateway, ping-service) are **not** applied by this script — each is deployed by its own Jenkins pipeline or manually:
+
+```bash
+# Deploy gateway (from gateway repo)
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+
+# Deploy shop (from shop repo)
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/deployment.yaml
+
+# Deploy ping-service (from ping-service repo)
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+```
 
 Total time: ~4–6 minutes (first run installs ESO and pulls images).
 
@@ -84,7 +100,7 @@ ESO re-syncs every **1 hour** automatically. If an AWS secret value changes, ESO
 
 ### Key resources
 
-| Resource | Kind | File | Purpose |
+| Resource | Kind | File (in `infra` repo) | Purpose |
 |---|---|---|---|
 | `aws-secretsmanager` | `SecretStore` | `k8s/overlays/local/secret-store.yaml` | Tells ESO how to authenticate to AWS (static credentials from `aws-credentials` k8s Secret) |
 | `mongodb-credentials` | `ExternalSecret` | `k8s/base/external-secrets/mongodb-credentials-es.yaml` | Syncs `username` + `password` from AWS |
@@ -176,34 +192,50 @@ The `ExternalSecret` resources (base) are identical in both environments — onl
 
 ## Directory layout
 
+Each repo contains only the manifests it owns:
+
 ```
-k8s/
-├── base/                                  # Shared resources for all environments
-│   ├── kustomization.yaml
-│   ├── namespace.yaml
-│   ├── external-secrets/
-│   │   ├── mongodb-credentials-es.yaml   # ExternalSecret → mongodb-credentials k8s Secret
-│   │   ├── mongodb-keyfile-es.yaml       # ExternalSecret → mongodb-keyfile k8s Secret
-│   │   └── shop-secret-es.yaml           # ExternalSecret → shop-secret k8s Secret (with URI template)
-│   ├── gateway/
-│   │   ├── deployment.yaml               # 1 replica, reads JWT_SECRET from shop-secret
-│   │   └── service.yaml                  # ClusterIP port 80 → 8080
-│   ├── ping-service/
-│   │   ├── deployment.yaml               # 1 replica, /actuator/health probe
-│   │   └── service.yaml                  # ClusterIP port 8080 → 8080
-│   ├── mongodb/
-│   ├── redis/
-│   ├── zipkin/
-│   └── shop/
-├── overlays/
-│   ├── local/
+infra/                                 # github.com/nelsonvillam/infra
+├── k8s/
+│   ├── base/                          # Shared resources for all environments
 │   │   ├── kustomization.yaml
-│   │   └── secret-store.yaml             # SecretStore: static AWS credentials (Docker Desktop)
-│   └── eks/
-│       ├── kustomization.yaml
-│       ├── storageclass.yaml
-│       └── secret-store.yaml             # SecretStore: IRSA (EKS)
-└── kustomization.yaml                    # Points to overlays/eks (used by CI/CD)
+│   │   ├── namespace.yaml
+│   │   ├── external-secrets/
+│   │   │   ├── mongodb-credentials-es.yaml
+│   │   │   ├── mongodb-keyfile-es.yaml
+│   │   │   └── shop-secret-es.yaml
+│   │   ├── mongodb/
+│   │   ├── redis/
+│   │   └── zipkin/
+│   └── overlays/
+│       ├── local/
+│       │   ├── kustomization.yaml     # patches StorageClass → standard
+│       │   └── secret-store.yaml      # SecretStore: static AWS credentials (Docker Desktop)
+│       └── eks/
+│           ├── kustomization.yaml
+│           ├── storageclass.yaml      # gp2-csi StorageClass (EBS CSI driver)
+│           └── secret-store.yaml      # SecretStore: IRSA (EKS)
+├── scripts/
+│   ├── local-deploy.sh
+│   └── mongo-init.sh
+└── docker-compose.yml
+
+shop/                                  # github.com/nelsonvillam/shop
+└── k8s/
+    ├── deployment.yaml
+    ├── service.yaml
+    └── configmap.yaml
+
+gateway/                               # github.com/nelsonvillam/gateway
+└── k8s/
+    ├── deployment.yaml
+    ├── service.yaml
+    └── ingress.yaml                   # nginx Ingress → gateway service
+
+ping-service/                          # github.com/nelsonvillam/ping-service
+└── k8s/
+    ├── deployment.yaml
+    └── service.yaml
 ```
 
 ---
@@ -257,9 +289,9 @@ kubectl rollout restart deployment/shop -n shop
 # Restart the port-forward tunnel (e.g. after a reboot)
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 9090:80 &
 
-# Re-run RS init job (if replica set needs re-initialising)
+# Re-run RS init job (if replica set needs re-initialising) — from infra repo
 kubectl delete job mongodb-rs-init -n shop --ignore-not-found=true
-kubectl apply -f k8s/base/mongodb/rs-init-job.yaml
+kubectl apply -f infra/k8s/base/mongodb/rs-init-job.yaml
 ```
 
 ---
@@ -299,7 +331,7 @@ kubectl delete namespace external-secrets
 | ESO sync fails: `AccessDenied` | AWS credentials lack `secretsmanager:GetSecretValue` | Attach the required IAM policy to your AWS user/role |
 | ESO sync fails: `ResourceNotFoundException` | AWS secret name mismatch | Verify secret names in AWS: `aws secretsmanager list-secrets --region sa-east-1` |
 | Shop pods crashing | Secrets not yet synced by ESO | Wait for `kubectl get externalsecrets -n shop` to show `SecretSynced`; then restart pods |
-| PVCs stuck in `Pending` | Wrong StorageClass | Ensure overlay is applied: `kubectl apply -k k8s/overlays/local/` |
+| PVCs stuck in `Pending` | Wrong StorageClass | Ensure infra overlay is applied: `kubectl apply -k infra/k8s/overlays/local/` |
 | Ingress returns 404 | nginx controller not running | `kubectl get pods -n ingress-nginx` — reinstall if missing |
 | mongo-0 crash: `invalid char in key file` | keyfile synced incorrectly | Check `kubectl describe externalsecret mongodb-keyfile -n shop` |
 | Image not found | Image never built/pushed | Run `./gradlew bootJar && docker build -t nelsonvillam/shop:latest .` |

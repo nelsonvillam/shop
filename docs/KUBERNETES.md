@@ -150,59 +150,73 @@ Docker Compose runs all containers on a single machine. If that machine goes dow
 
 ## Directory Structure
 
+Each service lives in its own repository. All four repos sit at the same level under `mongodb-course/`:
+
 ```
-gateway/                            # Spring Cloud Gateway (separate Spring Boot project)
-├── src/main/java/com/example/gateway/
-│   ├── GatewayApplication.java
-│   └── filter/
-│       └── JwtAuthenticationFilter.java  # GlobalFilter: validates JWT, adds X-User-Name
-├── src/main/resources/application.yml    # routes: /ping/** → ping-service, /** → shop
-├── build.gradle
-└── Dockerfile
-
-ping-service/                       # Test microservice (separate Spring Boot project)
-├── src/main/java/com/example/ping/
-│   ├── PingApplication.java
-│   └── PingController.java         # GET/POST/PUT/DELETE /ping → "pong - <METHOD>"
-├── src/main/resources/application.yml
-├── build.gradle
-└── Dockerfile
-
-k8s/
-├── kustomization.yaml              # delegates to overlays/eks (used by CI/CD)
-├── base/                           # shared resources for all environments
-│   ├── kustomization.yaml
-│   ├── namespace.yaml
-│   ├── external-secrets/
-│   │   ├── mongodb-credentials-es.yaml  # ExternalSecret — syncs username + password
-│   │   ├── mongodb-keyfile-es.yaml      # ExternalSecret — syncs keyfile
-│   │   └── shop-secret-es.yaml          # ExternalSecret — syncs JWT, admin pw, assembles URI
-│   ├── gateway/
-│   │   ├── deployment.yaml         # 1 replica, reads JWT_SECRET from shop-secret
-│   │   └── service.yaml            # ClusterIP port 80 → 8080
-│   ├── ping-service/
-│   │   ├── deployment.yaml         # 1 replica, /actuator/health probe
-│   │   └── service.yaml            # ClusterIP port 8080 → 8080
-│   ├── mongodb/
-│   │   ├── statefulset.yaml        # 3-node replica set with keyFile auth
-│   │   ├── headless-service.yaml   # stable DNS names for each pod
-│   │   ├── service.yaml            # ClusterIP for tooling / ad-hoc access
-│   │   └── rs-init-job.yaml        # Job that calls rs.initiate() once
-│   ├── redis/
-│   ├── zipkin/
-│   └── shop/
-│       ├── configmap.yaml          # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
-│       ├── deployment.yaml         # 2 replicas, liveness + readiness probes
-│       ├── service.yaml            # ClusterIP port 80 → 8080
-│       └── ingress.yaml            # nginx Ingress → gateway (not shop directly)
-└── overlays/
-    ├── local/                      # Docker Desktop
-    │   ├── kustomization.yaml
-    │   └── secret-store.yaml       # SecretStore: static AWS credentials
-    └── eks/                        # EKS
-        ├── kustomization.yaml
-        ├── storageclass.yaml       # gp2-csi StorageClass (EBS CSI driver)
-        └── secret-store.yaml       # SecretStore: IRSA (IAM role via service account)
+mongodb-course/
+│
+├── shop/                               # github.com/nelsonvillam/shop
+│   ├── src/
+│   ├── k8s/
+│   │   ├── deployment.yaml             # 2 replicas, liveness + readiness probes
+│   │   ├── service.yaml                # ClusterIP port 80 → 8080
+│   │   └── configmap.yaml             # non-sensitive env vars (REDIS_HOST, ZIPKIN_URL)
+│   ├── Jenkinsfile                     # full pipeline: lint → test → sonar → build → deploy
+│   ├── Dockerfile
+│   └── build.gradle
+│
+├── gateway/                            # github.com/nelsonvillam/gateway
+│   ├── src/main/java/com/example/gateway/
+│   │   ├── GatewayApplication.java
+│   │   └── filter/JwtAuthenticationFilter.java  # GlobalFilter: JWT validation
+│   ├── src/main/resources/application.yml        # routes: /ping/** → ping-service, /** → shop
+│   ├── k8s/
+│   │   ├── deployment.yaml             # 1 replica, reads JWT_SECRET from shop-secret
+│   │   ├── service.yaml                # ClusterIP port 80 → 8080
+│   │   └── ingress.yaml               # nginx Ingress → gateway
+│   ├── Jenkinsfile                     # build → push → deploy
+│   ├── Dockerfile
+│   └── build.gradle
+│
+├── ping-service/                       # github.com/nelsonvillam/ping-service
+│   ├── src/main/java/com/example/ping/
+│   │   ├── PingApplication.java
+│   │   └── PingController.java         # GET/POST/PUT/DELETE /ping → "pong - <METHOD>"
+│   ├── k8s/
+│   │   ├── deployment.yaml             # 1 replica, /actuator/health probe
+│   │   └── service.yaml                # ClusterIP port 8080 → 8080
+│   ├── Jenkinsfile                     # build → push → deploy
+│   ├── Dockerfile
+│   └── build.gradle
+│
+└── infra/                              # github.com/nelsonvillam/infra
+    ├── k8s/
+    │   ├── base/                       # shared resources for all environments
+    │   │   ├── kustomization.yaml
+    │   │   ├── namespace.yaml
+    │   │   ├── external-secrets/
+    │   │   │   ├── mongodb-credentials-es.yaml  # ExternalSecret — syncs username + password
+    │   │   │   ├── mongodb-keyfile-es.yaml      # ExternalSecret — syncs keyfile
+    │   │   │   └── shop-secret-es.yaml          # ExternalSecret — syncs JWT, admin pw, URI
+    │   │   ├── mongodb/
+    │   │   │   ├── statefulset.yaml    # 3-node replica set with keyFile auth
+    │   │   │   ├── headless-service.yaml
+    │   │   │   ├── service.yaml
+    │   │   │   └── rs-init-job.yaml
+    │   │   ├── redis/
+    │   │   └── zipkin/
+    │   └── overlays/
+    │       ├── local/                  # Docker Desktop
+    │       │   ├── kustomization.yaml  # patches MongoDB StorageClass → standard
+    │       │   └── secret-store.yaml   # SecretStore: static AWS credentials
+    │       └── eks/                    # EKS
+    │           ├── kustomization.yaml
+    │           ├── storageclass.yaml   # gp2-csi StorageClass (EBS CSI driver)
+    │           └── secret-store.yaml   # SecretStore: IRSA
+    ├── scripts/
+    │   ├── local-deploy.sh
+    │   └── mongo-init.sh
+    └── docker-compose.yml
 ```
 
 No placeholder secret YAML files are committed to git. Secrets are managed exclusively by the External Secrets Operator — see [External Secrets Operator](#external-secrets-operator) below.
@@ -301,7 +315,9 @@ helm install external-secrets external-secrets/external-secrets \
   --wait
 ```
 
-### Step 2 — Apply all resources
+### Step 2 — Apply shared infra resources
+
+Run from the `infra` repo root.
 
 For local (Docker Desktop):
 ```bash
@@ -313,7 +329,7 @@ For EKS:
 kubectl apply -k k8s/overlays/eks/
 ```
 
-This creates the namespace, all workload resources, and the `ExternalSecret` + `SecretStore` resources.
+This creates the namespace, MongoDB, Redis, Zipkin, and the `ExternalSecret` + `SecretStore` resources. Service deployments (shop, gateway, ping-service) are applied separately by each service's pipeline or manually from their repos.
 
 ### Step 3 — Create the aws-credentials Secret (local only)
 
@@ -343,6 +359,8 @@ kubectl wait externalsecret/shop-secret \
 
 ### Step 5 — Wait for mongo-0, then init the replica set
 
+Run from the `infra` repo root:
+
 ```bash
 kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
 
@@ -366,27 +384,41 @@ Expected output: `Replica set initialized successfully` or `Replica set already 
 ### First deploy
 
 ```bash
-# Apply overlay (local or eks)
+# 1. Apply shared infra (from infra repo)
 kubectl apply -k k8s/overlays/local/
 
-# Wait for ESO to sync secrets, then init MongoDB
+# 2. Wait for ESO to sync secrets, then init MongoDB
 kubectl wait externalsecret/mongodb-credentials --namespace shop --for=condition=Ready --timeout=60s
 kubectl wait --for=condition=ready pod/mongo-0 --namespace shop --timeout=120s
 kubectl apply -f k8s/base/mongodb/rs-init-job.yaml
+
+# 3. Deploy each service (from their respective repos)
+# gateway repo:
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+
+# shop repo:
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/deployment.yaml
+
+# ping-service repo:
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
 ```
 
 ### Subsequent deploys
 
-The Jenkins pipeline handles this automatically. To deploy manually:
+Each service's Jenkins pipeline handles this automatically on every push. To deploy manually from a service repo:
 
 ```bash
 IMAGE_TAG=42   # replace with your build number
 sed "s|nelsonvillam/shop:latest|nelsonvillam/shop:${IMAGE_TAG}|g" \
-  k8s/base/shop/deployment.yaml | kubectl apply -f -
+  k8s/deployment.yaml | kubectl apply -f -
 
-kubectl apply -f k8s/base/shop/configmap.yaml
-kubectl apply -f k8s/base/shop/service.yaml
-kubectl apply -f k8s/base/shop/ingress.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/service.yaml
 kubectl rollout status deployment/shop --namespace shop --timeout=5m
 ```
 
@@ -396,7 +428,7 @@ kubectl rollout status deployment/shop --namespace shop --timeout=5m
 
 ### StorageClass
 
-**File:** `k8s/storageclass.yaml`
+**File:** `infra/k8s/overlays/eks/storageclass.yaml`
 
 ```yaml
 provisioner: ebs.csi.aws.com
@@ -438,7 +470,7 @@ aws eks create-addon \
 
 ### MongoDB StatefulSet
 
-**File:** `k8s/mongodb/statefulset.yaml`
+**File:** `infra/k8s/base/mongodb/statefulset.yaml`
 
 MongoDB runs as a `StatefulSet` with 3 replicas. StatefulSets differ from regular Deployments in two important ways:
 

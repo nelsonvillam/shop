@@ -1,6 +1,13 @@
 # CI/CD Pipeline
 
-This project uses a Jenkins declarative pipeline to lint, test, analyse, build, and deploy the application automatically on every push to `main`.
+The project is split into four independent GitHub repositories, each with its own Jenkins pipeline. A push to any repository triggers only that service's pipeline — other services are unaffected.
+
+| Repository | GitHub | Pipeline scope |
+|---|---|---|
+| `shop` | `nelsonvillam/shop` | Lint → test → SonarQube → build → push → deploy |
+| `gateway` | `nelsonvillam/gateway` | Build → push → deploy |
+| `ping-service` | `nelsonvillam/ping-service` | Build → push → deploy |
+| `infra` | `nelsonvillam/infra` | Shared k8s infra (MongoDB, Redis, Zipkin, ESO) — no pipeline |
 
 ---
 
@@ -8,10 +15,10 @@ This project uses a Jenkins declarative pipeline to lint, test, analyse, build, 
 
 | Component | Technology | Purpose |
 |---|---|---|
-| CI/CD server | Jenkins (Docker container) | Runs the pipeline |
+| CI/CD server | Jenkins (Docker container) | Runs the pipelines |
 | Docker daemon | Docker-in-Docker (DinD) | Builds and runs containers inside Jenkins |
-| Image registry | Docker Hub (`nelsonvillam/shop`) | Stores built images |
-| Code quality | SonarCloud | Static analysis and quality gate |
+| Image registry | Docker Hub (`nelsonvillam/*`) | Stores built images |
+| Code quality | SonarCloud | Static analysis and quality gate (shop only) |
 | Database | MongoDB 7 | Persistent data store |
 | Cache | Redis 7 | Application-level caching |
 
@@ -27,7 +34,7 @@ triggers {
 }
 ```
 
-The pipeline runs automatically whenever GitHub sends a push webhook to Jenkins. The webhook is configured in the GitHub repository under **Settings → Webhooks**.
+Each pipeline runs automatically whenever GitHub sends a push webhook to Jenkins. The webhook is configured per repository under **Settings → Webhooks**.
 
 ### Local Jenkins with ngrok
 
@@ -37,7 +44,7 @@ When Jenkins is running locally (not publicly accessible), ngrok is used to expo
 ngrok http 8080
 ```
 
-The generated URL (e.g. `https://abc123.ngrok.io`) is set as the **Payload URL** in the GitHub webhook:
+The generated URL (e.g. `https://abc123.ngrok.io`) is set as the **Payload URL** in each GitHub repository's webhook:
 
 ```
 https://abc123.ngrok.io/github-webhook/
@@ -47,43 +54,23 @@ https://abc123.ngrok.io/github-webhook/
 
 ---
 
-## Environment Variables
+## Pipelines
 
-These are set globally for all stages:
-
-| Variable | Value | Purpose |
-|---|---|---|
-| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub image name for the shop service |
-| `GATEWAY_IMAGE_NAME` | `nelsonvillam/gateway` | Docker Hub image name for the API gateway |
-| `PING_IMAGE_NAME` | `nelsonvillam/ping-service` | Docker Hub image name for the ping microservice |
-| `IMAGE_TAG` | `${BUILD_NUMBER}` | Unique tag per build — same tag applied to all three images |
-| `GRADLE_USER_HOME` | `${WORKSPACE}/.gradle` | Redirects Gradle cache into the workspace to avoid permission errors in Docker containers |
-| `SONAR_USER_HOME` | `${WORKSPACE}/.sonar` | Redirects SonarQube cache into the workspace for the same reason |
-
-Stages that run inside a Docker container also pass `-e HOME=${WORKSPACE}` via `args`. This is scoped to the container only (not the global env block) so that Docker credential lookups on the Jenkins host are not disrupted.
-
----
-
-## Pipeline Stages
+### shop pipeline (full)
 
 ```mermaid
 flowchart TD
-    A([Push to main\ngithubPush trigger]) --> B[Checkout]
-    B --> C[Lint\ncheckstyleMain pmdMain spotbugsMain]
+    A([Push to nelsonvillam/shop]) --> B[Checkout]
+    B --> C[Lint]
     C --> D[Tests]
-    D --> E[Unit Test\n./gradlew test]
-    D --> F[Integration Test\n./gradlew integrationTest]
-    E --> G[SonarQube Analysis\njacocoTestReport + sonar]
+    D --> E[Unit Test]
+    D --> F[Integration Test]
+    E --> G[SonarQube Analysis]
     F --> G
-    G --> H[Quality Gate\nwaitForQualityGate]
-    H --> I[Build\n./gradlew bootJar]
-    I --> J[Docker Build & Push - parallel]
-    J --> J1[shop image\nnelsonvillam/shop]
-    J --> J2[gateway image\nnelsonvillam/gateway]
-    J --> J3[ping-service image\nnelsonvillam/ping-service]
-    J1 --> L[Deploy to Kubernetes]
-    J2 --> L
-    J3 --> L
+    G --> H[Quality Gate]
+    H --> I[Build bootJar]
+    I --> J[Docker Build & Push\nnelsonvillam/shop:BUILD_NUMBER]
+    J --> K[Deploy to Kubernetes\nshop deployment only]
 
     C -->|HTML| R1[Checkstyle Report]
     C -->|HTML| R2[PMD Report]
@@ -92,31 +79,69 @@ flowchart TD
     F -->|JUnit + HTML| R5[Integration Test Report]
     G -->|HTML| R6[Coverage Report]
 
-    L --> M[(MongoDB RS)]
-    L --> N[(Redis)]
-    L --> O[gateway → shop\nping-service]
+    style A fill:#4CAF50,color:#fff
+    style K fill:#2196F3,color:#fff
+```
+
+### gateway pipeline (simple)
+
+```mermaid
+flowchart TD
+    A([Push to nelsonvillam/gateway]) --> B[Checkout]
+    B --> C[Build bootJar]
+    C --> D[Docker Build & Push\nnelsonvillam/gateway:BUILD_NUMBER]
+    D --> E[Deploy to Kubernetes\ngateway deployment only]
 
     style A fill:#4CAF50,color:#fff
-    style O fill:#2196F3,color:#fff
-    style M fill:#4CAF50,color:#fff
-    style N fill:#f44336,color:#fff
+    style E fill:#2196F3,color:#fff
 ```
 
-Unit Test and Integration Test run in **parallel** inside the `Tests` stage with `failFast true` — if either fails, the other is cancelled immediately.
+### ping-service pipeline (simple)
+
+```mermaid
+flowchart TD
+    A([Push to nelsonvillam/ping-service]) --> B[Checkout]
+    B --> C[Build bootJar]
+    C --> D[Docker Build & Push\nnelsonvillam/ping-service:BUILD_NUMBER]
+    D --> E[Deploy to Kubernetes\nping-service deployment only]
+
+    style A fill:#4CAF50,color:#fff
+    style E fill:#2196F3,color:#fff
+```
 
 ---
 
-### 1. Checkout
+## Environment Variables
 
-Pulls the latest code from GitHub.
+Each pipeline defines only the variables it needs:
 
-```groovy
-checkout scm
-```
+### shop
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `IMAGE_NAME` | `nelsonvillam/shop` | Docker Hub image name |
+| `IMAGE_TAG` | `${BUILD_NUMBER}` | Unique tag per build |
+| `GRADLE_USER_HOME` | `${WORKSPACE}/.gradle` | Redirects Gradle cache into workspace |
+| `SONAR_USER_HOME` | `${WORKSPACE}/.sonar` | Redirects SonarQube cache into workspace |
+| `AWS_REGION` | `sa-east-1` | AWS region for ESO → Secrets Manager |
+
+### gateway / ping-service
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `IMAGE_NAME` | `nelsonvillam/gateway` or `nelsonvillam/ping-service` | Docker Hub image name |
+| `IMAGE_TAG` | `${BUILD_NUMBER}` | Unique tag per build |
+| `GRADLE_USER_HOME` | `${WORKSPACE}/.gradle` | Redirects Gradle cache into workspace |
 
 ---
 
-### 2. Lint
+## Stage Details
+
+### shop — Stage 1: Checkout
+
+Pulls the latest code from `nelsonvillam/shop`.
+
+### shop — Stage 2: Lint
 
 Runs inside an `eclipse-temurin:21-jdk` container. Executes three static analysis tools against the main source set.
 
@@ -130,171 +155,135 @@ Runs inside an `eclipse-temurin:21-jdk` container. Executes three static analysi
 | PMD | Best practices and error-prone patterns | `config/pmd/ruleset.xml` |
 | SpotBugs | Bug patterns in compiled bytecode | `config/spotbugs/exclude.xml` |
 
-A fourth tool, **ErrorProne**, runs automatically during compilation inside every stage that compiles Java — it requires no separate task.
+A fourth tool, **ErrorProne**, runs automatically during every compilation stage — it requires no separate task.
 
-The build fails immediately if any violation is found. HTML reports for all three tools are published to Jenkins after the build.
+### shop — Stage 3: Tests (parallel)
 
----
-
-### 3. Tests (parallel)
-
-Unit Test and Integration Test run simultaneously. `failFast true` cancels the remaining stage if either fails.
+Unit Test and Integration Test run simultaneously. `failFast true` cancels the other if either fails.
 
 #### Unit Test
-
-Runs inside an `eclipse-temurin:21-jdk` container.
 
 ```bash
 ./gradlew test --no-daemon
 ```
 
-- Runs all test classes **not** ending in `IT`
-- JUnit XML results published to Jenkins
-- HTML test report published to Jenkins
+Runs inside `eclipse-temurin:21-jdk`. Runs all classes **not** ending in `IT`. JUnit XML + HTML report published to Jenkins.
 
 #### Integration Test
-
-Runs directly on the Jenkins host (no Docker container) so Testcontainers can reach the Docker daemon and spin up a real MongoDB instance.
 
 ```bash
 ./gradlew integrationTest --no-daemon
 ```
 
-- Runs only classes ending in `IT`
-- Testcontainers proxy socket at `/tmp/docker-tc-proxy.sock` is used when running inside Jenkins to redirect Docker socket access
-- JUnit XML results published to Jenkins
-- HTML test report published to Jenkins
+Runs on the Jenkins host (no Docker container) so Testcontainers can reach the Docker daemon and spin up a real MongoDB instance. Runs only classes ending in `IT`.
 
----
-
-### 4. SonarQube Analysis
-
-Runs inside an `eclipse-temurin:21-jdk` container. Merges coverage data from both test runs and sends the full analysis to SonarCloud.
+### shop — Stage 4: SonarQube Analysis
 
 ```bash
 ./gradlew jacocoTestReport sonar --no-daemon
 ```
 
-- Merges `build/jacoco/test.exec` and `build/jacoco/integrationTest.exec` into a single JaCoCo report
-- Sends source, bytecode, and coverage XML to SonarCloud
-- Requires the `sonarqube` server configured in **Manage Jenkins → System → SonarQube servers**
-- Requires **Automatic Analysis** disabled in SonarCloud (**Administration → Analysis Method**)
-- The SonarCloud token is injected by `withSonarQubeEnv('sonarqube')` from Jenkins credentials
+Merges coverage from both test runs and sends the analysis to SonarCloud. Requires `withSonarQubeEnv('sonarqube')`.
 
-Coverage HTML report published to Jenkins after the build.
+### shop — Stage 5: Quality Gate
 
----
-
-### 5. Quality Gate
-
-Waits up to 5 minutes for SonarCloud to finish evaluating the analysis. If the gate fails, the pipeline is aborted — no artifact is built or deployed.
-
-```groovy
-timeout(time: 5, unit: 'MINUTES') {
-    waitForQualityGate abortPipeline: true
-}
-```
-
-The default **Sonar way** gate checks new code only:
+Waits up to 5 minutes for SonarCloud to confirm the gate passes. Aborts the pipeline if it fails — nothing is built or deployed.
 
 | Condition | Threshold |
 |---|---|
 | Coverage on New Code | ≥ 80% |
 | Duplicated Lines on New Code | ≤ 3% |
-| Maintainability Rating | A |
-| Reliability Rating | A |
-| Security Rating | A |
-| Security Hotspots Reviewed | 100% |
+| Maintainability / Reliability / Security Rating | A |
 
----
+### All services — Build
 
-### 6. Build
-
-Runs inside an `eclipse-temurin:21-jdk` container. Produces the runnable fat JAR.
+Runs inside `eclipse-temurin:21-jdk`. Produces the fat JAR.
 
 ```bash
 ./gradlew bootJar --no-daemon
 ```
 
-Output: `build/libs/shop-0.0.1-SNAPSHOT.jar`
+### All services — Docker Build & Push
 
----
+Builds and pushes a multi-architecture image (`linux/amd64` + `linux/arm64`) tagged with both the build number and `latest`:
 
-### 7. Docker Build & Push (parallel)
-
-Three images are built and pushed in parallel using `docker buildx` for multi-architecture support (`linux/amd64` + `linux/arm64`). Each image is tagged with both the build number and `latest`.
-
-| Parallel stage | Working dir | Image pushed |
-|---|---|---|
-| Build shop image | `.` (repo root) | `nelsonvillam/shop:<BUILD_NUMBER>`, `nelsonvillam/shop:latest` |
-| Build gateway image | `gateway/` | `nelsonvillam/gateway:<BUILD_NUMBER>`, `nelsonvillam/gateway:latest` |
-| Build ping-service image | `ping-service/` | `nelsonvillam/ping-service:<BUILD_NUMBER>`, `nelsonvillam/ping-service:latest` |
-
-The gateway and ping-service each run their own `./gradlew bootJar` before the Docker build because they are standalone Gradle projects with their own build files.
+```bash
+docker buildx build \
+    --platform linux/amd64,linux/arm64 \
+    -t ${IMAGE_NAME}:${IMAGE_TAG} \
+    -t ${IMAGE_NAME}:latest \
+    --push .
+```
 
 No `docker login` step runs in the pipeline — credentials are stored as a plain base64 token in `~/.docker/config.json` on the Jenkins host.
 
----
+### All services — Deploy to Kubernetes
 
-### 8. Deploy to Kubernetes
+Each pipeline deploys **only its own service**. The shop pipeline additionally refreshes AWS credentials and waits for ESO to sync secrets (since shop depends on `shop-secret`).
 
-Applies all manifests via Kustomize, refreshes AWS credentials for the External Secrets Operator, waits for secrets to sync, then pins each deployment to the exact build-number image tag.
-
+**shop deploy:**
 ```bash
-# Switch to local cluster
 kubectl config use-context docker-desktop
 
-# Apply all resources (ExternalSecrets, SecretStore, deployments, services, ingress)
-kubectl apply -k k8s/overlays/local/
-
-# Refresh aws-credentials secret so ESO can authenticate to AWS Secrets Manager
+# Refresh aws-credentials for ESO
 kubectl create secret generic aws-credentials --namespace shop \
     --from-literal=access-key-id="..." --from-literal=secret-access-key="..." \
     --dry-run=client -o yaml | kubectl replace --force -f -
 
-# Wait for ESO to sync all secrets
-for es in mongodb-credentials mongodb-keyfile shop-secret; do
-    kubectl wait externalsecret/$es --namespace shop --for=condition=Ready --timeout=120s
-done
+# Wait for secrets to sync
+kubectl wait externalsecret/shop-secret --namespace shop --for=condition=Ready --timeout=120s
 
-# Pin each deployment to the exact build tag (no :latest in the cluster)
+# Apply shop manifests with pinned tag
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/service.yaml
 sed 's|nelsonvillam/shop:latest|nelsonvillam/shop:<BUILD_NUMBER>|g' \
-    k8s/base/shop/deployment.yaml | kubectl apply -f -
+    k8s/deployment.yaml | kubectl apply -f -
+
+kubectl rollout status deployment/shop --namespace shop --timeout=5m
+```
+
+**gateway deploy:**
+```bash
+kubectl config use-context docker-desktop
 
 sed 's|nelsonvillam/gateway:latest|nelsonvillam/gateway:<BUILD_NUMBER>|g' \
-    k8s/base/gateway/deployment.yaml | kubectl apply -f -
+    k8s/deployment.yaml | kubectl apply -f -
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+
+kubectl rollout status deployment/gateway --namespace shop --timeout=5m
+```
+
+**ping-service deploy:**
+```bash
+kubectl config use-context docker-desktop
 
 sed 's|nelsonvillam/ping-service:latest|nelsonvillam/ping-service:<BUILD_NUMBER>|g' \
-    k8s/base/ping-service/deployment.yaml | kubectl apply -f -
+    k8s/deployment.yaml | kubectl apply -f -
+kubectl apply -f k8s/service.yaml
 
-# Wait for all three rollouts to complete
-kubectl rollout status deployment/shop --namespace shop --timeout=5m
-kubectl rollout status deployment/gateway --namespace shop --timeout=5m
 kubectl rollout status deployment/ping-service --namespace shop --timeout=5m
 ```
 
-On failure, all three deployments are automatically rolled back:
-
+All pipelines roll back automatically on failure:
 ```bash
-kubectl rollout undo deployment/shop --namespace shop
-kubectl rollout undo deployment/gateway --namespace shop
-kubectl rollout undo deployment/ping-service --namespace shop
+kubectl rollout undo deployment/<service> --namespace shop
 ```
 
 ---
 
-## HTML Reports
+## HTML Reports (shop only)
 
 All reports are published in the `post { always { } }` block so they appear even on failed builds.
 
-| Report | Source | When useful |
-|---|---|---|
-| Checkstyle Report | `build/reports/checkstyle/main.html` | See exact style violations with file and line |
-| PMD Report | `build/reports/pmd/main.html` | See best-practice violations with rule descriptions |
-| SpotBugs Report | `build/reports/spotbugs/main.html` | See bug patterns with severity and class context |
-| Unit Test Report | `build/reports/tests/test/index.html` | See which unit tests passed, failed, or were skipped |
-| Integration Test Report | `build/reports/tests/integrationTest/index.html` | See which integration tests passed, failed, or were skipped |
-| Coverage Report | `build/reports/jacoco/test/html/index.html` | See line and branch coverage by class |
+| Report | Source |
+|---|---|
+| Checkstyle Report | `build/reports/checkstyle/main.html` |
+| PMD Report | `build/reports/pmd/main.html` |
+| SpotBugs Report | `build/reports/spotbugs/main.html` |
+| Unit Test Report | `build/reports/tests/test/index.html` |
+| Integration Test Report | `build/reports/tests/integrationTest/index.html` |
+| Coverage Report | `build/reports/jacoco/test/html/index.html` |
 
 > If reports appear unstyled, run the following in **Manage Jenkins → Script Console**:
 > ```groovy
@@ -309,16 +298,16 @@ All reports are published in the `post { always { } }` block so they appear even
 
 All services run in the `shop` namespace and communicate via Kubernetes DNS:
 
-| Service | Image | Internal port | Role |
-|---|---|---|---|
-| `gateway` | `nelsonvillam/gateway` | 8080 | API gateway — JWT validation, path-based routing |
-| `shop` | `nelsonvillam/shop` | 8080 | Main business API (2 replicas) |
-| `ping-service` | `nelsonvillam/ping-service` | 8080 | Test microservice — simple GET/POST/PUT/DELETE responses |
-| `mongo` | `mongo:7` (StatefulSet) | 27017 | MongoDB replica set (3 nodes) |
-| `redis` | `redis:7-alpine` | 6379 | Application cache |
-| `zipkin` | `openzipkin/zipkin:3` | 9411 | Distributed tracing |
+| Service | Repo | Image | Internal port | Role |
+|---|---|---|---|---|
+| `gateway` | `nelsonvillam/gateway` | `nelsonvillam/gateway` | 8080 | API gateway — JWT validation, path-based routing |
+| `shop` | `nelsonvillam/shop` | `nelsonvillam/shop` | 8080 | Main business API (2 replicas) |
+| `ping-service` | `nelsonvillam/ping-service` | `nelsonvillam/ping-service` | 8080 | Test microservice |
+| `mongo` | `nelsonvillam/infra` | `mongo:7` (StatefulSet) | 27017 | MongoDB replica set (3 nodes) |
+| `redis` | `nelsonvillam/infra` | `redis:7-alpine` | 6379 | Application cache |
+| `zipkin` | `nelsonvillam/infra` | `openzipkin/zipkin:3` | 9411 | Distributed tracing |
 
-### docker-compose.yml (local testing without K8s)
+### docker-compose.yml (in `nelsonvillam/infra` — local testing without K8s)
 
 | Service | Image | Port |
 |---|---|---|
@@ -334,25 +323,42 @@ Data is persisted across deployments via named Docker volumes (`mongo-data`, `re
 
 ## Jenkins Credentials
 
-| Credential ID | Type | Used in stage |
+| Credential ID | Type | Used by |
 |---|---|---|
-| `dockerhub-creds` | Username/Password | Docker Push (legacy — now unused; credentials stored in `~/.docker/config.json`) |
-| `mongo-user` | Secret text | Deploy |
-| `mongo-password` | Secret text | Deploy |
-| `sonarqube` | Secret text (token) | SonarQube Analysis (injected by `withSonarQubeEnv`) |
+| `aws-access-key-id` | Secret text | shop pipeline — ESO → Secrets Manager auth |
+| `aws-secret-access-key` | Secret text | shop pipeline — ESO → Secrets Manager auth |
+| `sonarqube` | Secret text (token) | shop pipeline — SonarQube Analysis |
+
+---
+
+## Deployment Order (fresh cluster)
+
+Because each pipeline is independent, shared infrastructure must be deployed before any service:
+
+1. Apply infra manifests (creates namespace, MongoDB, Redis, Zipkin, ESO, SecretStore):
+   ```bash
+   kubectl apply -k infra/k8s/overlays/local/
+   ```
+2. Trigger or manually run the **gateway** pipeline
+3. Trigger or manually run the **shop** pipeline
+4. Trigger or manually run the **ping-service** pipeline
+
+On subsequent pushes each service deploys itself independently — no coordination needed.
 
 ---
 
 ## Accessing the Deployed App
 
-After a successful pipeline run the app is available at:
+After pipelines run the app is available via port-forward:
+
+```bash
+kubectl port-forward svc/gateway 9090:80 -n shop &
+```
 
 | URL | Description |
 |---|---|
-| `http://localhost:8081/swagger-ui/index.html` | Swagger UI |
-| `http://localhost:8081/v3/api-docs` | Raw OpenAPI spec |
-| `http://localhost:8081/api/products` | Products endpoint |
-| `http://localhost:8081/api/customers` | Customers endpoint |
-| `http://localhost:8081/api/orders` | Orders endpoint |
+| `http://localhost:9090/swagger-ui/index.html` | Swagger UI |
+| `http://localhost:9090/auth/login` | Login (POST) |
+| `http://localhost:9090/ping` | Ping test service (no token required) |
 
-> Port 8080 is occupied by Jenkins. The app is always exposed on **8081**.
+> Port 8080 is occupied by Jenkins.

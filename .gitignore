@@ -4,3 +4,4 @@ target/
 .claude/
 .idea/
 *.pem
+.DS_Store

@@ -1,31 +1,53 @@
 # Prometheus Metrics Collection — Spring Boot + Docker + Kubernetes
 
-This document explains how metrics are collected end-to-end across the multi-repo system: `shop`, `gateway`, and `ping-service` each expose Micrometer/Prometheus metrics, and a Prometheus server (deployed via the `infra` repo) scrapes all three on Kubernetes.
+This document explains how metrics are collected and visualized end-to-end across the multi-repo system: `shop`, `gateway`, and `ping-service` each expose Micrometer/Prometheus metrics; a Prometheus server (deployed via the `infra` repo) scrapes all three on Kubernetes; and Grafana queries Prometheus to render dashboards.
 
-For app-level metric concepts (custom counters, `@TrackCall`, Micrometer types), see [OBSERVABILITY.md](OBSERVABILITY.md) — this document focuses on wiring that up across services and deploying the collector itself.
+For app-level metric concepts (custom counters, `@TrackCall`, Micrometer types), see [OBSERVABILITY.md](OBSERVABILITY.md) — this document focuses on wiring that up across services and deploying the collector + visualization layer.
 
 ---
 
 ## Architecture
 
-```
-┌─────────┐   ┌─────────┐   ┌──────────────┐
-│  shop   │   │ gateway │   │ ping-service │   each exposes /actuator/prometheus
-└────┬────┘   └────┬────┘   └──────┬───────┘
-     │             │                │
-     └─────────────┼────────────────┘
-                    │  scraped per-pod (not via Service)
-              ┌─────▼─────┐
-              │ Prometheus │   deployed by infra repo, namespace "shop"
-              └────────────┘
+```mermaid
+flowchart LR
+    subgraph Pods["Kubernetes — namespace: shop"]
+        direction TB
+        S1["shop pod #1\n/actuator/prometheus"]
+        S2["shop pod #2\n/actuator/prometheus"]
+        G["gateway pod\n/actuator/prometheus"]
+        P["ping-service pod\n/actuator/prometheus"]
+    end
+
+    subgraph Collector["Prometheus"]
+        SD["kubernetes_sd_configs\nrole: pod"]
+        TSDB[("Time-series storage")]
+        SD --> TSDB
+    end
+
+    Viz["Grafana\nprovisioned Prometheus datasource"]
+    Dash["JVM (Micrometer) dashboard\nvariable: application = shop | gateway | ping-service"]
+    User(["You\nkubectl port-forward svc/grafana 3000:3000"])
+
+    S1 -- "scraped by pod IP" --> SD
+    S2 -- "scraped by pod IP" --> SD
+    G -- "scraped by pod IP" --> SD
+    P -- "scraped by pod IP" --> SD
+
+    TSDB -- PromQL --> Viz
+    Viz --> Dash
+    Dash --> User
+
+    style Collector fill:#e6522c,color:#fff
+    style Viz fill:#F46800,color:#fff
+    style User fill:#4CAF50,color:#fff
 ```
 
 | Repo | Role |
 |---|---|
 | `shop` | Already had `micrometer-registry-prometheus` — source of custom metrics like `shop.orders.placed` and `shop.api.calls` |
-| `gateway` | Added `micrometer-registry-prometheus` so its own actuator can serve `/actuator/prometheus` |
-| `ping-service` | Same addition |
-| `infra` | Deploys the Prometheus server + scrape config + RBAC — this is the only repo that changes to add a metrics *collector* |
+| `gateway` | Added `micrometer-registry-prometheus` so its own actuator can serve `/actuator/prometheus`, tagged `application: gateway` |
+| `ping-service` | Same addition, tagged `application: ping-service` |
+| `infra` | Deploys Prometheus (scrape config + RBAC) and Grafana (provisioned datasource) — the only repo that changes to add the collector/visualization layer |
 
 ---
 
@@ -54,6 +76,25 @@ This was caught by comparing response line counts (`gateway`'s `/actuator/promet
 Once `gateway` actually exposes its own `prometheus` endpoint, its actuator handler claims the path locally and the request never reaches the catch-all route. After redeploying, `gateway`'s `/actuator` root correctly lists `prometheus`, and its metrics output (195 lines, its own JVM/HTTP/gateway metrics) is distinct from `shop`'s.
 
 **Lesson:** in a gateway with a catch-all proxy route, any path the gateway's own server doesn't explicitly handle silently falls through to the proxy instead of 404ing. Don't assume a 200 response means the service you targeted actually answered.
+
+### Tagging metrics per service
+
+`shop` already set:
+
+```properties
+management.metrics.tags.application=shop
+```
+
+This adds an `application="shop"` label to every metric it emits — needed once more than one service reports to the same Prometheus instance, otherwise there's no way to tell which service a given `jvm_memory_used_bytes` series came from. `gateway` and `ping-service` didn't have this, so it was added to match:
+
+```yaml
+management:
+  metrics:
+    tags:
+      application: gateway   # or ping-service
+```
+
+This matters beyond just tidiness — the imported Grafana dashboard (see §4) filters everything through an `application` template variable, so without this tag a service is invisible in that dashboard even though Prometheus is scraping it correctly.
 
 ---
 
@@ -134,14 +175,49 @@ Prometheus's `ServiceAccount` gets a **namespaced `Role`**, not a `ClusterRole` 
 
 ---
 
-## 4. Deploying and verifying
+## 4. Kubernetes — deploying Grafana
+
+Also in the `infra` repo, under `k8s/base/grafana/`:
+
+| File | Purpose |
+|---|---|
+| `configmap.yaml` | Provisions the Prometheus datasource automatically (`http://prometheus:9090`) — no manual "Add data source" step |
+| `deployment.yaml` | Single-replica `grafana/grafana:11.3.1`, mounts the datasource ConfigMap under `/etc/grafana/provisioning/datasources` |
+| `service.yaml` | ClusterIP exposing Grafana's UI on port 3000 |
+
+Wired into `k8s/base/kustomization.yaml` alongside the Prometheus resources.
+
+`GF_SECURITY_ADMIN_PASSWORD=admin` is set directly as a plain env var (not a Kubernetes `Secret`) — acceptable here because Grafana has no persistent volume (state resets on pod restart anyway) and no `Ingress` exposes it outside the cluster; it's only reachable via `kubectl port-forward`, same as Prometheus.
+
+### Importing a dashboard
+
+The dashboard JSON comes from `grafana.com`'s public dashboard API and gets POSTed to Grafana's own import endpoint, substituting the datasource placeholder for the provisioned one:
+
+```bash
+curl -s "https://grafana.com/api/dashboards/4701/revisions/latest/download" -o dashboard.json
+
+curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/import \
+  -H "Content-Type: application/json" \
+  -d '{
+        "dashboard": '"$(cat dashboard.json)"',
+        "overwrite": true,
+        "inputs": [{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]
+      }'
+```
+
+Dashboard **4701** ("JVM (Micrometer)") is a community dashboard built for exactly this stack — it graphs heap/non-heap memory, GC pauses, thread count, and uptime, filtered by `application` and `instance` template variables.
+
+---
+
+## 5. Deploying and verifying
 
 ```bash
 # Deploy (local overlay shown; same command with overlays/eks/ for the live cluster)
 kubectl apply -k k8s/overlays/local/
 
-# Confirm the Prometheus pod is up
+# Confirm both pods are up
 kubectl rollout status deployment/prometheus -n shop
+kubectl rollout status deployment/grafana -n shop
 
 # Port-forward to check scrape targets
 kubectl port-forward -n shop svc/prometheus 9091:9090 &
@@ -155,15 +231,29 @@ curl -s --data-urlencode 'query=process_uptime_seconds{job="shop"}' \
   http://localhost:9091/api/v1/query | jq '.data.result[] | {pod: .metric.pod, uptime: .value[1]}'
 ```
 
+To verify Grafana end-to-end (not just Prometheus directly), query through Grafana's own datasource proxy — this exercises the exact path the UI uses:
+
+```bash
+kubectl port-forward -n shop svc/grafana 3000:3000 &
+curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[0].uid'   # get the datasource uid
+
+curl -s -u admin:admin -G "http://localhost:3000/api/datasources/proxy/uid/<uid>/api/v1/query" \
+  --data-urlencode 'query=process_uptime_seconds{application="gateway"}'
+```
+
+To open it yourself: `kubectl port-forward -n shop svc/grafana 3000:3000`, then `http://localhost:3000` (login `admin`/`admin`).
+
 ---
 
-## 5. Gotchas encountered
+## 6. Gotchas encountered
 
 | Gotcha | Symptom | Fix |
 |---|---|---|
 | Gateway's catch-all route masks unexposed actuator paths | `/actuator/prometheus` on gateway returned **200** with shop's own metrics instead of 404 | Add the Prometheus registry + exposure to gateway so its own actuator claims the path before it ever reaches the `Path=/**` route |
 | Static Service-based scrape targets undercount multi-replica services | Only one of shop's 2 replicas got scraped per tick; per-pod counters looked incomplete | `kubernetes_sd_configs` (role: pod) — scrape every pod individually by IP |
 | A new Micrometer dependency needs a fresh image | Editing `build.gradle` had no effect on the running pods | Trigger the Jenkins pipeline (build → buildx push → `kubectl apply` + rollout) after any dependency/config change |
+| Grafana dashboard variable silently hides a service | Dashboard 4701's `application` variable only ever listed `shop` even though gateway/ping-service were being scraped fine | Add `management.metrics.tags.application` to gateway/ping-service — the dashboard filters by that label, not by Prometheus `job` |
+| Grafana admin password can drift from what's in the manifest | API calls with `admin:admin` started failing with `password-auth.failed` after someone logged into the UI (Grafana prompts to change the default password) | `kubectl exec` into the pod and run `grafana cli admin reset-admin-password admin` to restore the known password — fine here since there's no persistent volume and no external exposure |
 
 ---
 
@@ -172,14 +262,17 @@ curl -s --data-urlencode 'query=process_uptime_seconds{job="shop"}' \
 | Repo | File | Change |
 |---|---|---|
 | `gateway` | `build.gradle` | + `io.micrometer:micrometer-registry-prometheus` |
-| `gateway` | `application.yml` | `exposure.include: health,info,prometheus` |
+| `gateway` | `application.yml` | `exposure.include: health,info,prometheus`, `metrics.tags.application: gateway` |
 | `ping-service` | `build.gradle` | + `io.micrometer:micrometer-registry-prometheus` |
-| `ping-service` | `application.yml` | `exposure.include: health,prometheus` |
+| `ping-service` | `application.yml` | `exposure.include: health,prometheus`, `metrics.tags.application: ping-service` |
 | `infra` | `k8s/base/prometheus/rbac.yaml` | new — `ServiceAccount`/`Role`/`RoleBinding` |
 | `infra` | `k8s/base/prometheus/configmap.yaml` | new — scrape config, 3 jobs, per-pod discovery |
 | `infra` | `k8s/base/prometheus/deployment.yaml` | new — Prometheus server |
 | `infra` | `k8s/base/prometheus/service.yaml` | new — ClusterIP :9090 |
-| `infra` | `k8s/base/kustomization.yaml` | wired the four new resources in |
+| `infra` | `k8s/base/grafana/configmap.yaml` | new — provisioned Prometheus datasource |
+| `infra` | `k8s/base/grafana/deployment.yaml` | new — Grafana server |
+| `infra` | `k8s/base/grafana/service.yaml` | new — ClusterIP :3000 |
+| `infra` | `k8s/base/kustomization.yaml` | wired all seven new resources in |
 
 ## Related docs
 

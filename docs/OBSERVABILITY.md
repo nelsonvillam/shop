@@ -2,6 +2,8 @@
 
 This document explains the observability features added to the shop application: structured logging and Prometheus metrics.
 
+For how these metrics are collected across the whole system — `gateway` and `ping-service` exposing their own `/actuator/prometheus`, and Prometheus deployed on Kubernetes to scrape all three services — see [PROMETHEUS_METRICS_COLLECTION.md](PROMETHEUS_METRICS_COLLECTION.md).
+
 ---
 
 ## Structured Logging
@@ -234,7 +236,7 @@ management.metrics.tags.application=shop
 
 ## Setting up Prometheus + Grafana (optional)
 
-To visualize the metrics locally, add Prometheus and Grafana to `docker-compose.yml`:
+To visualize the metrics locally, add Prometheus and Grafana to `docker-compose.yml`. For the Kubernetes deployment — a real Prometheus server scraping `shop`, `gateway`, and `ping-service` individually per pod — see [PROMETHEUS_METRICS_COLLECTION.md](PROMETHEUS_METRICS_COLLECTION.md) instead.
 
 ### 1. Create a Prometheus config file
 

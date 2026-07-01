@@ -181,31 +181,30 @@ Also in the `infra` repo, under `k8s/base/grafana/`:
 
 | File | Purpose |
 |---|---|
-| `configmap.yaml` | Provisions the Prometheus datasource automatically (`http://prometheus:9090`) — no manual "Add data source" step |
-| `deployment.yaml` | Single-replica `grafana/grafana:11.3.1`, mounts the datasource ConfigMap under `/etc/grafana/provisioning/datasources` |
+| `configmap.yaml` | Provisions the Prometheus datasource automatically (`http://prometheus:9090`, pinned `uid: prometheus`) — no manual "Add data source" step |
+| `configmap-dashboard-provider.yaml` | Tells Grafana to load dashboards from a folder on disk (`/var/lib/grafana/dashboards`), polling every 30s |
+| `configmap-dashboards.yaml` | The actual dashboard JSON, one key per dashboard — this *is* the dashboard, checked into git |
+| `deployment.yaml` | Single-replica `grafana/grafana:11.3.1`, mounts all three ConfigMaps |
 | `service.yaml` | ClusterIP exposing Grafana's UI on port 3000 |
 
 Wired into `k8s/base/kustomization.yaml` alongside the Prometheus resources.
 
-`GF_SECURITY_ADMIN_PASSWORD=admin` is set directly as a plain env var (not a Kubernetes `Secret`) — acceptable here because Grafana has no persistent volume (state resets on pod restart anyway) and no `Ingress` exposes it outside the cluster; it's only reachable via `kubectl port-forward`, same as Prometheus.
+`GF_SECURITY_ADMIN_PASSWORD=admin` is set directly as a plain env var (not a Kubernetes `Secret`) — acceptable here because Grafana has no persistent volume and no `Ingress` exposes it outside the cluster; it's only reachable via `kubectl port-forward`, same as Prometheus.
 
-### Importing a dashboard
+### Dashboards are provisioned as code, not clicked together
 
-The dashboard JSON comes from `grafana.com`'s public dashboard API and gets POSTed to Grafana's own import endpoint, substituting the datasource placeholder for the provisioned one:
+Grafana has no persistent volume. Anything created through the UI or the `/api/dashboards/*` HTTP API only lives in the pod's ephemeral SQLite database — a restart wipes it, exactly like the admin password gotcha below. The fix is Grafana's built-in **file-based dashboard provisioning**: point a provider config at a directory, and Grafana loads (and periodically reloads) every `.json` file in it automatically, no API calls required.
 
-```bash
-curl -s "https://grafana.com/api/dashboards/4701/revisions/latest/download" -o dashboard.json
+Two dashboards are provisioned this way:
 
-curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/import \
-  -H "Content-Type: application/json" \
-  -d '{
-        "dashboard": '"$(cat dashboard.json)"',
-        "overwrite": true,
-        "inputs": [{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}]
-      }'
-```
+| Dashboard | Source | What it shows |
+|---|---|---|
+| `jvm-micrometer.json` | Downloaded from `grafana.com`'s public API (community dashboard id **4701**) | Heap/non-heap memory, GC pauses, thread count, uptime — filtered by `application` and `instance` variables |
+| `shop-system-metrics.json` | Custom-built for this project | Business metrics (`shop.orders.placed` rate, `shop.api.calls` by controller/method) plus cross-service HTTP request rate, error rate, average/max latency, and thread-pool internals for `shop`, `gateway`, and `ping-service` side by side |
 
-Dashboard **4701** ("JVM (Micrometer)") is a community dashboard built for exactly this stack — it graphs heap/non-heap memory, GC pauses, thread count, and uptime, filtered by `application` and `instance` template variables.
+A dashboard downloaded from `grafana.com` references its datasource via a template placeholder (`"datasource": "${DS_PROMETHEUS}"`), meant to be resolved by Grafana's *import* API using an `inputs` array. File-based provisioning doesn't do that substitution, so before dropping the JSON into the ConfigMap it needs the placeholder replaced with the datasource's actual name (`"Prometheus"`) — a plain string search-and-replace, since Grafana resolves legacy string-style datasource references by name.
+
+Both dashboards also get an explicit `"uid"` set in their JSON (`jvm-micrometer`, `shop-system-metrics`). Without it, Grafana auto-generates a random uid on every fresh load — meaning the dashboard's URL would change on every pod restart.
 
 ---
 
@@ -231,17 +230,27 @@ curl -s --data-urlencode 'query=process_uptime_seconds{job="shop"}' \
   http://localhost:9091/api/v1/query | jq '.data.result[] | {pod: .metric.pod, uptime: .value[1]}'
 ```
 
-To verify Grafana end-to-end (not just Prometheus directly), query through Grafana's own datasource proxy — this exercises the exact path the UI uses:
+To verify Grafana end-to-end (not just Prometheus directly), query through Grafana's own datasource proxy — this exercises the exact path the UI uses. The datasource uid is pinned to `prometheus`, so it's always this exact URL:
 
 ```bash
 kubectl port-forward -n shop svc/grafana 3000:3000 &
-curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[0].uid'   # get the datasource uid
 
-curl -s -u admin:admin -G "http://localhost:3000/api/datasources/proxy/uid/<uid>/api/v1/query" \
+curl -s -u admin:admin -G "http://localhost:3000/api/datasources/proxy/uid/prometheus/api/v1/query" \
   --data-urlencode 'query=process_uptime_seconds{application="gateway"}'
 ```
 
-To open it yourself: `kubectl port-forward -n shop svc/grafana 3000:3000`, then `http://localhost:3000` (login `admin`/`admin`).
+To prove the dashboards themselves survive a restart (not just work right now), delete the pod and confirm they reappear with zero manual steps:
+
+```bash
+kubectl delete pod -n shop -l app=grafana
+kubectl rollout status deployment/grafana -n shop
+
+curl -s -u admin:admin "http://localhost:3000/api/search?type=dash-db" | jq '.[].uid'
+# jvm-micrometer
+# shop-system-metrics
+```
+
+To open it yourself: `kubectl port-forward -n shop svc/grafana 3000:3000`, then `http://localhost:3000/d/shop-system-metrics/` or `http://localhost:3000/d/jvm-micrometer/` (login `admin`/`admin`).
 
 ---
 
@@ -254,6 +263,7 @@ To open it yourself: `kubectl port-forward -n shop svc/grafana 3000:3000`, then 
 | A new Micrometer dependency needs a fresh image | Editing `build.gradle` had no effect on the running pods | Trigger the Jenkins pipeline (build → buildx push → `kubectl apply` + rollout) after any dependency/config change |
 | Grafana dashboard variable silently hides a service | Dashboard 4701's `application` variable only ever listed `shop` even though gateway/ping-service were being scraped fine | Add `management.metrics.tags.application` to gateway/ping-service — the dashboard filters by that label, not by Prometheus `job` |
 | Grafana admin password can drift from what's in the manifest | API calls with `admin:admin` started failing with `password-auth.failed` after someone logged into the UI (Grafana prompts to change the default password) | `kubectl exec` into the pod and run `grafana cli admin reset-admin-password admin` to restore the known password — fine here since there's no persistent volume and no external exposure |
+| No persistent volume means dashboards/datasources are ephemeral | A dashboard created via the API worked fine until the pod restarted, then it — and the auto-generated datasource uid it referenced — were both gone | Provision dashboards as ConfigMap-mounted JSON files (file-based provisioning) instead of the API, and pin explicit `uid`s on the datasource and both dashboards so nothing regenerates randomly on restart |
 
 ---
 
@@ -269,10 +279,12 @@ To open it yourself: `kubectl port-forward -n shop svc/grafana 3000:3000`, then 
 | `infra` | `k8s/base/prometheus/configmap.yaml` | new — scrape config, 3 jobs, per-pod discovery |
 | `infra` | `k8s/base/prometheus/deployment.yaml` | new — Prometheus server |
 | `infra` | `k8s/base/prometheus/service.yaml` | new — ClusterIP :9090 |
-| `infra` | `k8s/base/grafana/configmap.yaml` | new — provisioned Prometheus datasource |
-| `infra` | `k8s/base/grafana/deployment.yaml` | new — Grafana server |
+| `infra` | `k8s/base/grafana/configmap.yaml` | new — provisioned Prometheus datasource, pinned `uid: prometheus` |
+| `infra` | `k8s/base/grafana/configmap-dashboard-provider.yaml` | new — file-based dashboard provisioning config |
+| `infra` | `k8s/base/grafana/configmap-dashboards.yaml` | new — the `jvm-micrometer` and `shop-system-metrics` dashboard JSON |
+| `infra` | `k8s/base/grafana/deployment.yaml` | new — Grafana server, mounts all three ConfigMaps |
 | `infra` | `k8s/base/grafana/service.yaml` | new — ClusterIP :3000 |
-| `infra` | `k8s/base/kustomization.yaml` | wired all seven new resources in |
+| `infra` | `k8s/base/kustomization.yaml` | wired all nine new resources in |
 
 ## Related docs
 
